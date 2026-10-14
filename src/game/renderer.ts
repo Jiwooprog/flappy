@@ -241,9 +241,9 @@ export class GameRenderer {
     const textures = this.getPipeTextures(theme, palette);
 
     for (const pipe of pipes) {
-      this.renderSinglePipe(pipe.x, 0, pipe.width, pipe.topHeight, true, textures);
+      this.renderSinglePipe(pipe.x, 0, pipe.width, pipe.topHeight, true, palette, textures);
       const bottomH = CANVAS_HEIGHT - GROUND_HEIGHT - pipe.bottomY;
-      this.renderSinglePipe(pipe.x, pipe.bottomY, pipe.width, bottomH, false, textures);
+      this.renderSinglePipe(pipe.x, pipe.bottomY, pipe.width, bottomH, false, palette, textures);
     }
   }
 
@@ -253,6 +253,7 @@ export class GameRenderer {
     width: number,
     height: number,
     isTop: boolean,
+    palette: (typeof THEME_PALETTES)['day'],
     textures: { body: HTMLCanvasElement; lip: HTMLCanvasElement }
   ) {
     const ctx = this.ctx;
