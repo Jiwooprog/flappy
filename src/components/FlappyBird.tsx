@@ -268,12 +268,28 @@ export const FlappyBird: React.FC = () => {
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext('2d', { alpha: false, desynchronized: true });
     if (!ctx) return;
 
     const renderer = new GameRenderer(ctx);
+    let isVisible = !document.hidden;
+
+    const handleVisibilityChange = () => {
+      isVisible = !document.hidden;
+      if (isVisible && rafIdRef.current === null) {
+        lastTimeRef.current = null;
+        rafIdRef.current = requestAnimationFrame(loop);
+      } else if (!isVisible && rafIdRef.current !== null) {
+        cancelAnimationFrame(rafIdRef.current);
+        rafIdRef.current = null;
+        lastTimeRef.current = null;
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     const loop = (timestamp: number) => {
+      if (!isVisible) return;
       if (!lastTimeRef.current) {
         lastTimeRef.current = timestamp;
       }
@@ -367,8 +383,10 @@ export const FlappyBird: React.FC = () => {
     rafIdRef.current = requestAnimationFrame(loop);
 
     return () => {
-      if (rafIdRef.current) {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      if (rafIdRef.current !== null) {
         cancelAnimationFrame(rafIdRef.current);
+        rafIdRef.current = null;
       }
     };
   }, [handleGameOver, handleScoreIncrement]);

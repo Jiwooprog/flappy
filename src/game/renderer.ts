@@ -5,6 +5,11 @@ import { PIPE_LIP_HEIGHT, PIPE_LIP_OVERHANG } from './physics';
 export class GameRenderer {
   private ctx: CanvasRenderingContext2D;
   private imageCache = new Map<string, HTMLImageElement>();
+  private skyGradients = new Map<Theme, CanvasGradient>();
+  private readonly starPositions = [
+    [30, 40], [80, 80], [130, 30], [210, 60], [260, 110],
+    [45, 130], [160, 140], [330, 120], [100, 180], [240, 190],
+  ];
 
   constructor(ctx: CanvasRenderingContext2D) {
     this.ctx = ctx;
@@ -29,9 +34,13 @@ export class GameRenderer {
     const palette = THEME_PALETTES[theme];
 
     // 1. Sky Gradient
-    const skyGrad = ctx.createLinearGradient(0, 0, 0, CANVAS_HEIGHT - GROUND_HEIGHT);
-    skyGrad.addColorStop(0, palette.skyTop);
-    skyGrad.addColorStop(1, palette.skyBottom);
+    let skyGrad = this.skyGradients.get(theme);
+    if (!skyGrad) {
+      skyGrad = ctx.createLinearGradient(0, 0, 0, CANVAS_HEIGHT - GROUND_HEIGHT);
+      skyGrad.addColorStop(0, palette.skyTop);
+      skyGrad.addColorStop(1, palette.skyBottom);
+      this.skyGradients.set(theme, skyGrad);
+    }
     ctx.fillStyle = skyGrad;
     ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT - GROUND_HEIGHT);
 
@@ -79,15 +88,12 @@ export class GameRenderer {
 
       // Static seeded stars
       ctx.fillStyle = '#ffffff';
-      const starPositions = [
-        [30, 40], [80, 80], [130, 30], [210, 60], [260, 110],
-        [45, 130], [160, 140], [330, 120], [100, 180], [240, 190]
-      ];
-      starPositions.forEach(([sx, sy], i) => {
+      for (let i = 0; i < this.starPositions.length; i++) {
+        const [sx, sy] = this.starPositions[i];
         const twinkle = Math.sin((scrollOffset * 0.05) + i * 2) * 0.3 + 0.7;
         ctx.globalAlpha = twinkle;
         ctx.fillRect(sx, sy, 2, 2);
-      });
+      }
       ctx.globalAlpha = 1;
       ctx.restore();
     }
@@ -209,40 +215,34 @@ export class GameRenderer {
 
     ctx.save();
 
-    // 1. Pipe Body Gradient (rounded tube look)
-    const bodyGrad = ctx.createLinearGradient(x, 0, x + width, 0);
-    bodyGrad.addColorStop(0, palette.pipeShadow);
-    bodyGrad.addColorStop(0.25, palette.pipeMain);
-    bodyGrad.addColorStop(0.45, palette.pipeHighlight);
-    bodyGrad.addColorStop(0.7, palette.pipeMain);
-    bodyGrad.addColorStop(1, palette.pipeShadow);
+    // Draw in pipe-local coordinates so one gradient serves both body and cap.
+    ctx.translate(x, 0);
+    const pipeGrad = ctx.createLinearGradient(0, 0, width, 0);
+    pipeGrad.addColorStop(0, palette.pipeShadow);
+    pipeGrad.addColorStop(0.25, palette.pipeMain);
+    pipeGrad.addColorStop(0.45, palette.pipeHighlight);
+    pipeGrad.addColorStop(0.7, palette.pipeMain);
+    pipeGrad.addColorStop(1, palette.pipeShadow);
 
     const bodyY = isTop ? 0 : y + PIPE_LIP_HEIGHT;
     const bodyH = isTop ? height - PIPE_LIP_HEIGHT : height - PIPE_LIP_HEIGHT;
 
     if (bodyH > 0) {
-      ctx.fillStyle = bodyGrad;
-      ctx.fillRect(x, bodyY, width, bodyH);
+      ctx.fillStyle = pipeGrad;
+      ctx.fillRect(0, bodyY, width, bodyH);
 
       // Outlines
       ctx.strokeStyle = palette.pipeBorder;
       ctx.lineWidth = 2.5;
-      ctx.strokeRect(x, bodyY, width, bodyH);
+      ctx.strokeRect(0, bodyY, width, bodyH);
     }
 
     // 2. Pipe Lip Cap
-    const lipX = x - PIPE_LIP_OVERHANG;
+    const lipX = -PIPE_LIP_OVERHANG;
     const lipW = width + PIPE_LIP_OVERHANG * 2;
     const lipY = isTop ? height - PIPE_LIP_HEIGHT : y;
 
-    const lipGrad = ctx.createLinearGradient(lipX, 0, lipX + lipW, 0);
-    lipGrad.addColorStop(0, palette.pipeShadow);
-    lipGrad.addColorStop(0.25, palette.pipeMain);
-    lipGrad.addColorStop(0.45, palette.pipeHighlight);
-    lipGrad.addColorStop(0.7, palette.pipeMain);
-    lipGrad.addColorStop(1, palette.pipeShadow);
-
-    ctx.fillStyle = lipGrad;
+    ctx.fillStyle = pipeGrad;
     ctx.fillRect(lipX, lipY, lipW, PIPE_LIP_HEIGHT);
 
     ctx.strokeStyle = palette.pipeBorder;

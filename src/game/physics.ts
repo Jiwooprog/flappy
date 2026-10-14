@@ -80,41 +80,38 @@ export function updatePipesList(
   onScore: () => void,
   birdX: number
 ): Pipe[] {
-  const updatedPipes: Pipe[] = [];
+  let writeIndex = 0;
 
-  for (const pipe of pipes) {
-    const newX = pipe.x - config.pipeSpeed * dt;
-    let passed = pipe.passed;
+  for (let readIndex = 0; readIndex < pipes.length; readIndex++) {
+    const pipe = pipes[readIndex];
+    pipe.x -= config.pipeSpeed * dt;
 
     // Check if bird passed the pipe center
-    if (!passed && birdX > newX + pipe.width / 2) {
-      passed = true;
+    if (!pipe.passed && birdX > pipe.x + pipe.width / 2) {
+      pipe.passed = true;
       onScore();
     }
 
     // Keep if still visible on screen
-    if (newX + pipe.width + 10 > 0) {
-      updatedPipes.push({
-        ...pipe,
-        x: newX,
-        passed,
-      });
+    if (pipe.x + pipe.width + 10 > 0) {
+      pipes[writeIndex++] = pipe;
     }
   }
+  pipes.length = writeIndex;
 
   // Determine if we need to spawn a new pipe
-  if (updatedPipes.length === 0) {
+  if (pipes.length === 0) {
     lastPipeIdRef.current += 1;
-    updatedPipes.push(createPipe(CANVAS_WIDTH + 30, config.pipeGap, lastPipeIdRef.current));
+    pipes.push(createPipe(CANVAS_WIDTH + 30, config.pipeGap, lastPipeIdRef.current));
   } else {
-    const rightmostPipe = updatedPipes.reduce((prev, curr) => (curr.x > prev.x ? curr : prev));
+    const rightmostPipe = pipes[pipes.length - 1];
     if (rightmostPipe.x <= CANVAS_WIDTH - config.pipeInterval) {
       lastPipeIdRef.current += 1;
-      updatedPipes.push(createPipe(CANVAS_WIDTH + 10, config.pipeGap, lastPipeIdRef.current));
+      pipes.push(createPipe(CANVAS_WIDTH + 10, config.pipeGap, lastPipeIdRef.current));
     }
   }
 
-  return updatedPipes;
+  return pipes;
 }
 
 // Circle vs Axis-Aligned Bounding Box (AABB) with gentle grace inset
@@ -204,9 +201,9 @@ export function checkCollision(bird: Bird, pipes: Pipe[]): boolean {
 }
 
 export function updateParticles(particles: Particle[], dt: number): Particle[] {
-  const result: Particle[] = [];
-
-  for (const p of particles) {
+  let writeIndex = 0;
+  for (let readIndex = 0; readIndex < particles.length; readIndex++) {
+    const p = particles[readIndex];
     p.life -= dt;
     if (p.life <= 0) continue;
 
@@ -223,10 +220,11 @@ export function updateParticles(particles: Particle[], dt: number): Particle[] {
       p.size += 15 * dt; // smoke expands
     }
 
-    result.push(p);
+    particles[writeIndex++] = p;
   }
 
-  return result;
+  particles.length = writeIndex;
+  return particles;
 }
 
 export function createFlapParticles(bird: Bird, color: string): Particle[] {

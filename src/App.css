@@ -980,17 +980,20 @@ body {
    -------------------------------------------------------------------------- */
 @media (max-width: 480px) {
   body {
-    padding: 0;
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+    min-height: 100svh;
   }
   .arcade-cabinet {
     border-radius: 0;
     border: none;
     height: 100vh;
     height: 100dvh;
+    min-height: 0;
   }
   .screen-bezel {
     padding: 0;
     flex: 1;
+    min-height: 0;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -999,6 +1002,7 @@ body {
     border-radius: 0;
     border: none;
     max-height: 100%;
+    touch-action: manipulation;
   }
   .arcade-marquee {
     padding: 8px 12px;
@@ -1014,6 +1018,27 @@ body {
   }
   .game-logo-sub {
     font-size: 22px;
+  }
+  .hud-icon-btn,
+  .menu-sub-btn,
+  .diff-pill {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
+
+@media (max-width: 900px) and (max-height: 560px) and (orientation: landscape) {
+  body { padding: 0; }
+  .arcade-cabinet { height: 100svh; height: 100dvh; }
+  .arcade-marquee { padding-block: 4px; }
+  .arcade-footer { display: none; }
+  .screen-bezel { padding: 4px 12px; }
+  .screen-crt-container {
+    width: auto;
+    height: 100%;
+    max-height: 100%;
+    max-width: 100%;
+    aspect-ratio: 380 / 620;
   }
 }
 
