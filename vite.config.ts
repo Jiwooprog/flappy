@@ -59,22 +59,32 @@ function leaderboardPlugin(env: Record<string, string>): Plugin {
           if (redis) {
             try {
               const key = difficulty !== 'all' ? `flappy:leaderboard:${difficulty}` : 'flappy:leaderboard:all';
-              const raw = await redis.zrange(key, 0, 99, { rev: true });
-              const list: LeaderboardEntry[] = (raw || []).map((item) => {
-                if (typeof item === 'string') {
-                  try {
-                    return JSON.parse(item);
-                  } catch {
-                    return null;
+              const topUsernames = await redis.zrange<string[]>(key, 0, 99, { rev: true });
+              if (topUsernames && topUsernames.length > 0) {
+                const hashKeys = topUsernames.map((u) => `${difficulty}:${u}`);
+                const rawProfiles = await redis.hmget<Record<string, LeaderboardEntry | string>>('flappy:profiles', ...hashKeys);
+                const list: LeaderboardEntry[] = [];
+                if (rawProfiles) {
+                  for (const u of topUsernames) {
+                    const profile = rawProfiles[`${difficulty}:${u}`];
+                    if (profile) {
+                      if (typeof profile === 'string') {
+                        try {
+                          list.push(JSON.parse(profile));
+                        } catch {
+                          // ignore
+                        }
+                      } else {
+                        list.push(profile);
+                      }
+                    }
                   }
                 }
-                return item as LeaderboardEntry;
-              }).filter(Boolean);
-
-              res.setHeader('Content-Type', 'application/json');
-              res.setHeader('Access-Control-Allow-Origin', '*');
-              res.end(JSON.stringify({ success: true, leaderboard: list, source: 'upstash' }));
-              return;
+                res.setHeader('Content-Type', 'application/json');
+                res.setHeader('Access-Control-Allow-Origin', '*');
+                res.end(JSON.stringify({ success: true, leaderboard: list, source: 'upstash' }));
+                return;
+              }
             } catch (err) {
               console.error('Local Upstash read failed, falling back to JSON:', err);
             }
@@ -100,6 +110,7 @@ function leaderboardPlugin(env: Record<string, string>): Plugin {
             try {
               const data = JSON.parse(body);
               const username = (data.username || 'PLAYER').trim().substring(0, 16) || 'PLAYER';
+              const uKey = username.toLowerCase();
               const score = Math.max(0, parseInt(data.score, 10) || 0);
               const difficulty = ['casual', 'classic', 'hardcore'].includes(data.difficulty)
                 ? data.difficulty
@@ -113,8 +124,8 @@ function leaderboardPlugin(env: Record<string, string>): Plugin {
                 return;
               }
 
-              const entry: LeaderboardEntry = {
-                id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+              let finalEntry: LeaderboardEntry = {
+                id: `${uKey}-${difficulty}`,
                 username,
                 score,
                 difficulty,
@@ -124,41 +135,77 @@ function leaderboardPlugin(env: Record<string, string>): Plugin {
 
               if (redis) {
                 try {
-                  const member = JSON.stringify(entry);
-                  await Promise.all([
-                    redis.zadd(`flappy:leaderboard:${difficulty}`, { score, member }),
-                    redis.zadd('flappy:leaderboard:all', { score, member }),
-                  ]);
-                  const zeroRank = await redis.zrevrank(`flappy:leaderboard:${difficulty}`, member);
+                  const diffKey = `flappy:leaderboard:${difficulty}`;
+                  const allKey = 'flappy:leaderboard:all';
+
+                  const currentScore = await redis.zscore(diffKey, uKey);
+                  if (currentScore === null || score > currentScore) {
+                    const fields: Record<string, string> = {};
+                    fields[`${difficulty}:${uKey}`] = JSON.stringify(finalEntry);
+                    await Promise.all([
+                      redis.hset('flappy:profiles', fields),
+                      redis.zadd(diffKey, { score, member: uKey }),
+                    ]);
+
+                    const currentAllScore = await redis.zscore(allKey, uKey);
+                    if (currentAllScore === null || score > currentAllScore) {
+                      const allFields: Record<string, string> = {};
+                      allFields[`all:${uKey}`] = JSON.stringify(finalEntry);
+                      await Promise.all([
+                        redis.hset('flappy:profiles', allFields),
+                        redis.zadd(allKey, { score, member: uKey }),
+                      ]);
+                    }
+                  } else {
+                    const rawExisting = await redis.hget<string | LeaderboardEntry>('flappy:profiles', `${difficulty}:${uKey}`);
+                    if (rawExisting) {
+                      finalEntry = typeof rawExisting === 'string' ? JSON.parse(rawExisting) : rawExisting;
+                    }
+                  }
+
+                  const zeroRank = await redis.zrevrank(diffKey, uKey);
                   const rank = zeroRank !== null && zeroRank !== undefined ? zeroRank + 1 : 1;
+
                   await Promise.all([
-                    redis.zremrangebyrank(`flappy:leaderboard:${difficulty}`, 0, -101),
-                    redis.zremrangebyrank('flappy:leaderboard:all', 0, -101),
+                    redis.zremrangebyrank(diffKey, 0, -101),
+                    redis.zremrangebyrank(allKey, 0, -101),
                   ]);
 
                   res.setHeader('Content-Type', 'application/json');
                   res.setHeader('Access-Control-Allow-Origin', '*');
-                  res.end(JSON.stringify({ success: true, rank, entry, source: 'upstash' }));
+                  res.end(JSON.stringify({ success: true, rank, entry: finalEntry, source: 'upstash' }));
                   return;
                 } catch (err) {
                   console.error('Local Upstash write failed, falling back to JSON:', err);
                 }
               }
 
+              // Local JSON deduplication (1 entry per username)
               const list = readDb();
-              list.push(entry);
-              list.sort((a, b) => b.score - a.score);
+              const existingIdx = list.findIndex(
+                (item) => item.username.toLowerCase() === uKey && item.difficulty === difficulty
+              );
 
-              // Keep top 100 entries
+              if (existingIdx !== -1) {
+                if (score > list[existingIdx].score) {
+                  list[existingIdx] = finalEntry;
+                } else {
+                  finalEntry = list[existingIdx];
+                }
+              } else {
+                list.push(finalEntry);
+              }
+
+              list.sort((a, b) => b.score - a.score);
               const trimmed = list.slice(0, 100);
               writeDb(trimmed);
 
               const diffList = trimmed.filter((item) => item.difficulty === difficulty);
-              const rank = diffList.findIndex((item) => item.id === entry.id) + 1;
+              const rank = diffList.findIndex((item) => item.username.toLowerCase() === uKey) + 1;
 
               res.setHeader('Content-Type', 'application/json');
               res.setHeader('Access-Control-Allow-Origin', '*');
-              res.end(JSON.stringify({ success: true, rank, entry, source: 'local' }));
+              res.end(JSON.stringify({ success: true, rank: rank || 1, entry: finalEntry, source: 'local' }));
             } catch {
               res.statusCode = 400;
               res.setHeader('Content-Type', 'application/json');

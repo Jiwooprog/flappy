@@ -80,27 +80,44 @@ export async function submitLeaderboardScore(
     // API failed, fallback to local save
   }
 
-  // Local storage fallback
+  // Local storage fallback (deduplicated: 1 entry per username per difficulty)
   try {
     const local = localStorage.getItem(LOCAL_LEADERBOARD_KEY);
     const list: LeaderboardEntry[] = local ? JSON.parse(local) : [];
-    const entry: LeaderboardEntry = {
-      id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-      username: username.trim() || 'PLAYER',
+    const cleanName = username.trim().substring(0, 16) || 'PLAYER';
+    const uKey = cleanName.toLowerCase();
+
+    let entry: LeaderboardEntry = {
+      id: `${uKey}-${difficulty}`,
+      username: cleanName,
       score,
       difficulty,
       skin,
       timestamp: Date.now(),
     };
-    list.push(entry);
+
+    const existingIdx = list.findIndex(
+      (item) => item.username.toLowerCase() === uKey && item.difficulty === difficulty
+    );
+
+    if (existingIdx !== -1) {
+      if (score > list[existingIdx].score) {
+        list[existingIdx] = entry;
+      } else {
+        entry = list[existingIdx];
+      }
+    } else {
+      list.push(entry);
+    }
+
     list.sort((a, b) => b.score - a.score);
     const trimmed = list.slice(0, 100);
     localStorage.setItem(LOCAL_LEADERBOARD_KEY, JSON.stringify(trimmed));
 
     const diffList = trimmed.filter((item) => item.difficulty === difficulty);
-    const rank = diffList.findIndex((item) => item.id === entry.id) + 1;
+    const rank = diffList.findIndex((item) => item.username.toLowerCase() === uKey) + 1;
 
-    return { rank, entry };
+    return { rank: rank || 1, entry };
   } catch {
     return null;
   }

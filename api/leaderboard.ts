@@ -12,7 +12,7 @@ interface LeaderboardEntry {
 
 const SEED_ENTRIES: LeaderboardEntry[] = [
   {
-    id: 'seed-1',
+    id: 'gino_champ',
     username: 'Gino_Champ',
     score: 45,
     difficulty: 'classic',
@@ -20,7 +20,7 @@ const SEED_ENTRIES: LeaderboardEntry[] = [
     timestamp: 1728910000000,
   },
   {
-    id: 'seed-2',
+    id: 'jewel_star',
     username: 'Jewel_Star',
     score: 38,
     difficulty: 'classic',
@@ -28,7 +28,7 @@ const SEED_ENTRIES: LeaderboardEntry[] = [
     timestamp: 1728911000000,
   },
   {
-    id: 'seed-3',
+    id: 'rj_ace',
     username: 'RJ_Ace',
     score: 35,
     difficulty: 'classic',
@@ -36,7 +36,7 @@ const SEED_ENTRIES: LeaderboardEntry[] = [
     timestamp: 1728912000000,
   },
   {
-    id: 'seed-6',
+    id: 'solarking',
     username: 'SolarKing',
     score: 31,
     difficulty: 'hardcore',
@@ -44,7 +44,7 @@ const SEED_ENTRIES: LeaderboardEntry[] = [
     timestamp: 1728915000000,
   },
   {
-    id: 'seed-4',
+    id: 'flappymaster',
     username: 'FlappyMaster',
     score: 26,
     difficulty: 'classic',
@@ -52,7 +52,7 @@ const SEED_ENTRIES: LeaderboardEntry[] = [
     timestamp: 1728913000000,
   },
   {
-    id: 'seed-5',
+    id: 'pixelrider',
     username: 'PixelRider',
     score: 19,
     difficulty: 'casual',
@@ -67,15 +67,19 @@ const redisToken = process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_A
 
 const redis = redisUrl && redisToken ? new Redis({ url: redisUrl, token: redisToken }) : null;
 
-// Ensure initial seed entries exist in Redis
+// Ensure initial seed entries exist in Redis (1 per username)
 async function ensureSeedData(client: Redis) {
   try {
     const exists = await client.exists('flappy:leaderboard:all');
     if (!exists) {
       for (const entry of SEED_ENTRIES) {
-        const payload = JSON.stringify(entry);
-        await client.zadd('flappy:leaderboard:all', { score: entry.score, member: payload });
-        await client.zadd(`flappy:leaderboard:${entry.difficulty}`, { score: entry.score, member: payload });
+        const uKey = entry.username.toLowerCase();
+        const fields: Record<string, string> = {};
+        fields[`${entry.difficulty}:${uKey}`] = JSON.stringify(entry);
+        fields[`all:${uKey}`] = JSON.stringify(entry);
+        await client.hset('flappy:profiles', fields);
+        await client.zadd(`flappy:leaderboard:${entry.difficulty}`, { score: entry.score, member: uKey });
+        await client.zadd('flappy:leaderboard:all', { score: entry.score, member: uKey });
       }
     }
   } catch (err) {
@@ -111,7 +115,7 @@ export default async function handler(req: IncomingMessage & { query?: Record<st
   const url = new URL(req.url || '/', 'http://localhost');
   const difficulty = url.searchParams.get('difficulty') || 'all';
 
-  // GET: Retrieve Top 100 scores
+  // GET: Retrieve Top 100 scores (Deduplicated: 1 entry per username)
   if (req.method === 'GET') {
     if (!redis) {
       // Graceful fallback if Upstash environment variables are not yet configured on Vercel
@@ -128,18 +132,35 @@ export default async function handler(req: IncomingMessage & { query?: Record<st
     try {
       await ensureSeedData(redis);
       const key = difficulty !== 'all' ? `flappy:leaderboard:${difficulty}` : 'flappy:leaderboard:all';
-      const raw = await redis.zrange(key, 0, 99, { rev: true });
+      const topUsernames = await redis.zrange<string[]>(key, 0, 99, { rev: true });
 
-      const leaderboard: LeaderboardEntry[] = (raw || []).map((item) => {
-        if (typeof item === 'string') {
-          try {
-            return JSON.parse(item);
-          } catch {
-            return null;
+      if (!topUsernames || topUsernames.length === 0) {
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify({ success: true, leaderboard: [] }));
+        return;
+      }
+
+      // Fetch each user's profile card from flappy:profiles
+      const hashKeys = topUsernames.map((u) => `${difficulty}:${u}`);
+      const rawProfiles = await redis.hmget<Record<string, LeaderboardEntry | string>>('flappy:profiles', ...hashKeys);
+
+      const leaderboard: LeaderboardEntry[] = [];
+      if (rawProfiles) {
+        for (const u of topUsernames) {
+          const profile = rawProfiles[`${difficulty}:${u}`];
+          if (profile) {
+            if (typeof profile === 'string') {
+              try {
+                leaderboard.push(JSON.parse(profile));
+              } catch {
+                // Ignore parse errors
+              }
+            } else {
+              leaderboard.push(profile);
+            }
           }
         }
-        return item as LeaderboardEntry;
-      }).filter(Boolean);
+      }
 
       res.setHeader('Content-Type', 'application/json');
       res.end(JSON.stringify({ success: true, leaderboard }));
@@ -153,13 +174,14 @@ export default async function handler(req: IncomingMessage & { query?: Record<st
     }
   }
 
-  // POST: Submit a new score
+  // POST: Submit a new score (1 entry per username - only updates if score beats personal best)
   if (req.method === 'POST') {
     try {
       const rawBody = await readBody(req);
       const data = JSON.parse(rawBody || '{}');
 
       const username = (data.username || 'PLAYER').trim().substring(0, 16) || 'PLAYER';
+      const uKey = username.toLowerCase();
       const score = Math.max(0, parseInt(data.score, 10) || 0);
       const diff: LeaderboardEntry['difficulty'] = ['casual', 'classic', 'hardcore'].includes(data.difficulty)
         ? data.difficulty
@@ -173,8 +195,27 @@ export default async function handler(req: IncomingMessage & { query?: Record<st
         return;
       }
 
-      const entry: LeaderboardEntry = {
-        id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      if (!redis) {
+        const demoEntry: LeaderboardEntry = {
+          id: uKey,
+          username,
+          score,
+          difficulty: diff,
+          skin,
+          timestamp: Date.now(),
+        };
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify({ success: true, rank: 1, entry: demoEntry }));
+        return;
+      }
+
+      const diffKey = `flappy:leaderboard:${diff}`;
+      const allKey = 'flappy:leaderboard:all';
+
+      // Check user's current score for this difficulty
+      const currentScore = await redis.zscore(diffKey, uKey);
+      let finalEntry: LeaderboardEntry = {
+        id: `${uKey}-${diff}`,
         username,
         score,
         difficulty: diff,
@@ -182,33 +223,45 @@ export default async function handler(req: IncomingMessage & { query?: Record<st
         timestamp: Date.now(),
       };
 
-      if (!redis) {
-        // Fallback demo response if no Upstash connected yet
-        res.setHeader('Content-Type', 'application/json');
-        res.end(JSON.stringify({ success: true, rank: 1, entry }));
-        return;
+      if (currentScore === null || score > currentScore) {
+        // New personal record for this user in this difficulty!
+        const fields: Record<string, string> = {};
+        fields[`${diff}:${uKey}`] = JSON.stringify(finalEntry);
+        await Promise.all([
+          redis.hset('flappy:profiles', fields),
+          redis.zadd(diffKey, { score, member: uKey }),
+        ]);
+
+        // Also check if it's their highest score across all modes
+        const currentAllScore = await redis.zscore(allKey, uKey);
+        if (currentAllScore === null || score > currentAllScore) {
+          const allFields: Record<string, string> = {};
+          allFields[`all:${uKey}`] = JSON.stringify(finalEntry);
+          await Promise.all([
+            redis.hset('flappy:profiles', allFields),
+            redis.zadd(allKey, { score, member: uKey }),
+          ]);
+        }
+      } else {
+        // Lower than existing record: retain their best score
+        const rawExisting = await redis.hget<string | LeaderboardEntry>('flappy:profiles', `${diff}:${uKey}`);
+        if (rawExisting) {
+          finalEntry = typeof rawExisting === 'string' ? JSON.parse(rawExisting) : rawExisting;
+        }
       }
 
-      const member = JSON.stringify(entry);
-
-      // Add to both the difficulty-specific sorted set and the global 'all' sorted set
-      await Promise.all([
-        redis.zadd(`flappy:leaderboard:${diff}`, { score, member }),
-        redis.zadd('flappy:leaderboard:all', { score, member }),
-      ]);
-
-      // Calculate the player's 1-indexed rank in their difficulty
-      const zeroRank = await redis.zrevrank(`flappy:leaderboard:${diff}`, member);
+      // Calculate the player's 1-indexed rank among unique users
+      const zeroRank = await redis.zrevrank(diffKey, uKey);
       const rank = zeroRank !== null && zeroRank !== undefined ? zeroRank + 1 : 1;
 
-      // Maintain only top 100 entries (prune rank 101 onwards)
+      // Keep only top 100 unique players
       await Promise.all([
-        redis.zremrangebyrank(`flappy:leaderboard:${diff}`, 0, -101),
-        redis.zremrangebyrank('flappy:leaderboard:all', 0, -101),
+        redis.zremrangebyrank(diffKey, 0, -101),
+        redis.zremrangebyrank(allKey, 0, -101),
       ]);
 
       res.setHeader('Content-Type', 'application/json');
-      res.end(JSON.stringify({ success: true, rank, entry }));
+      res.end(JSON.stringify({ success: true, rank, entry: finalEntry }));
       return;
     } catch (err) {
       console.error('Upstash POST error:', err);
