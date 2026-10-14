@@ -1,3 +1,4 @@
+import type { IncomingMessage, ServerResponse } from 'node:http';
 import { Redis } from '@upstash/redis';
 
 interface LeaderboardEntry {
@@ -9,36 +10,42 @@ interface LeaderboardEntry {
   timestamp: number;
 }
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type',
-  'Content-Type': 'application/json',
-};
+const redisUrl = process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL;
+const redisToken = process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN;
+const redis = redisUrl && redisToken ? new Redis({ url: redisUrl, token: redisToken }) : null;
 
-function getRedis(): Redis | null {
-  const url = process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN;
-  return url && token ? new Redis({ url, token }) : null;
+async function readBody(req: IncomingMessage): Promise<string> {
+  return new Promise((resolve, reject) => {
+    let body = '';
+    req.on('data', (chunk) => { body += chunk; });
+    req.on('end', () => resolve(body));
+    req.on('error', (err) => reject(err));
+  });
 }
 
-export default async function handler(req: Request): Promise<Response> {
-  // CORS preflight
+export default async function handler(
+  req: IncomingMessage & { url?: string },
+  res: ServerResponse
+) {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
   if (req.method === 'OPTIONS') {
-    return new Response(null, { status: 200, headers: corsHeaders });
+    res.statusCode = 200;
+    res.end();
+    return;
   }
 
-  const url = new URL(req.url);
+  const url = new URL(req.url || '/', 'http://localhost');
   const difficulty = url.searchParams.get('difficulty') || 'all';
 
-  // ── GET: fetch top-100 leaderboard ──────────────────────────────────────
+  // ── GET ─────────────────────────────────────────────────────────────────
   if (req.method === 'GET') {
-    const redis = getRedis();
     if (!redis) {
-      return new Response(JSON.stringify({ success: true, leaderboard: [] }), {
-        status: 200,
-        headers: corsHeaders,
-      });
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify({ success: true, leaderboard: [] }));
+      return;
     }
 
     try {
@@ -50,10 +57,9 @@ export default async function handler(req: Request): Promise<Response> {
       const topUsernames = await redis.zrange<string[]>(key, 0, 99, { rev: true });
 
       if (!topUsernames || topUsernames.length === 0) {
-        return new Response(JSON.stringify({ success: true, leaderboard: [] }), {
-          status: 200,
-          headers: corsHeaders,
-        });
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify({ success: true, leaderboard: [] }));
+        return;
       }
 
       const hashKeys = topUsernames.map((u) => `${difficulty}:${u}`);
@@ -68,11 +74,7 @@ export default async function handler(req: Request): Promise<Response> {
           const profile = rawProfiles[`${difficulty}:${u}`];
           if (profile) {
             if (typeof profile === 'string') {
-              try {
-                leaderboard.push(JSON.parse(profile));
-              } catch {
-                // skip malformed entries
-              }
+              try { leaderboard.push(JSON.parse(profile)); } catch { /* skip */ }
             } else {
               leaderboard.push(profile);
             }
@@ -80,23 +82,22 @@ export default async function handler(req: Request): Promise<Response> {
         }
       }
 
-      return new Response(JSON.stringify({ success: true, leaderboard }), {
-        status: 200,
-        headers: corsHeaders,
-      });
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify({ success: true, leaderboard }));
     } catch (err) {
       console.error('Upstash GET error:', err);
-      return new Response(
-        JSON.stringify({ error: 'Failed to fetch leaderboard' }),
-        { status: 500, headers: corsHeaders }
-      );
+      res.statusCode = 500;
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify({ error: 'Failed to fetch leaderboard' }));
     }
+    return;
   }
 
-  // ── POST: submit a score ─────────────────────────────────────────────────
+  // ── POST ─────────────────────────────────────────────────────────────────
   if (req.method === 'POST') {
     try {
-      const data = (await req.json()) as Record<string, unknown>;
+      const rawBody = await readBody(req);
+      const data = JSON.parse(rawBody || '{}') as Record<string, unknown>;
 
       const username = ((data.username as string) || 'PLAYER').trim().substring(0, 16) || 'PLAYER';
       const uKey = username.toLowerCase();
@@ -110,13 +111,11 @@ export default async function handler(req: Request): Promise<Response> {
       const skin = (data.skin as string) || 'classic';
 
       if (score <= 0) {
-        return new Response(
-          JSON.stringify({ error: 'Score must be greater than 0' }),
-          { status: 400, headers: corsHeaders }
-        );
+        res.statusCode = 400;
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify({ error: 'Score must be greater than 0' }));
+        return;
       }
-
-      const redis = getRedis();
 
       let finalEntry: LeaderboardEntry = {
         id: `${uKey}-${diff}`,
@@ -128,16 +127,14 @@ export default async function handler(req: Request): Promise<Response> {
       };
 
       if (!redis) {
-        return new Response(
-          JSON.stringify({ success: true, rank: 1, entry: finalEntry }),
-          { status: 200, headers: corsHeaders }
-        );
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify({ success: true, rank: 1, entry: finalEntry }));
+        return;
       }
 
       const diffKey = `flappy:leaderboard:${diff}`;
       const allKey = 'flappy:leaderboard:all';
 
-      // Only update if score beats personal best for this difficulty
       const currentScore = await redis.zscore(diffKey, uKey);
       if (currentScore === null || score > currentScore) {
         const fields: Record<string, string> = {};
@@ -147,7 +144,6 @@ export default async function handler(req: Request): Promise<Response> {
           redis.zadd(diffKey, { score, member: uKey }),
         ]);
 
-        // Update all-time board only if this is their overall best
         const currentAllScore = await redis.zscore(allKey, uKey);
         if (currentAllScore === null || score > currentAllScore) {
           const allFields: Record<string, string> = {};
@@ -158,39 +154,34 @@ export default async function handler(req: Request): Promise<Response> {
           ]);
         }
       } else {
-        // Return their existing best entry
         const rawExisting = await redis.hget<string | LeaderboardEntry>(
           'flappy:profiles',
           `${diff}:${uKey}`
         );
         if (rawExisting) {
-          finalEntry =
-            typeof rawExisting === 'string' ? JSON.parse(rawExisting) : rawExisting;
+          finalEntry = typeof rawExisting === 'string' ? JSON.parse(rawExisting) : rawExisting;
         }
       }
 
-      // 1-indexed rank
       const zeroRank = await redis.zrevrank(diffKey, uKey);
       const rank = zeroRank !== null && zeroRank !== undefined ? zeroRank + 1 : 1;
 
-      // Keep only top 100
       await Promise.all([
         redis.zremrangebyrank(diffKey, 0, -101),
         redis.zremrangebyrank(allKey, 0, -101),
       ]);
 
-      return new Response(
-        JSON.stringify({ success: true, rank, entry: finalEntry }),
-        { status: 200, headers: corsHeaders }
-      );
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify({ success: true, rank, entry: finalEntry }));
     } catch (err) {
       console.error('Upstash POST error:', err);
-      return new Response(
-        JSON.stringify({ error: 'Invalid score submission payload' }),
-        { status: 400, headers: corsHeaders }
-      );
+      res.statusCode = 400;
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify({ error: 'Invalid score submission payload' }));
     }
+    return;
   }
 
-  return new Response('Method Not Allowed', { status: 405, headers: corsHeaders });
+  res.statusCode = 405;
+  res.end('Method Not Allowed');
 }
