@@ -24,10 +24,10 @@ export function saveUsername(username: string): string {
 
 export async function fetchLeaderboard(difficulty?: string): Promise<LeaderboardEntry[]> {
   try {
-    const url = difficulty && difficulty !== 'all' 
+    const url = difficulty && difficulty !== 'all'
       ? `/api/leaderboard?difficulty=${encodeURIComponent(difficulty)}`
       : '/api/leaderboard';
-    
+
     const res = await fetch(url);
     if (!res.ok) throw new Error('Network error');
     const data = await res.json();
@@ -87,7 +87,9 @@ export async function submitLeaderboardScore(
     const cleanName = username.trim().substring(0, 16) || 'PLAYER';
     const uKey = cleanName.toLowerCase();
 
+
     let entry: LeaderboardEntry = {
+
       id: `${uKey}-${difficulty}`,
       username: cleanName,
       score,

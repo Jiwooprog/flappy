@@ -92,6 +92,7 @@ export const FlappyBird: React.FC = () => {
     theme,
     score,
     bestScore,
+    username,
   });
 
   useEffect(() => {
@@ -102,8 +103,9 @@ export const FlappyBird: React.FC = () => {
       theme,
       score,
       bestScore,
+      username,
     };
-  }, [gameState, difficulty, skin, theme, score, bestScore]);
+  }, [gameState, difficulty, skin, theme, score, bestScore, username]);
 
   const handleSelectDifficulty = useCallback((newDiff: Difficulty) => {
     setDifficulty(newDiff);
@@ -224,7 +226,8 @@ export const FlappyBird: React.FC = () => {
 
     // Auto-submit score to global shared leaderboard if score > 0
     if (currentScore > 0) {
-      submitLeaderboardScore(username, currentScore, currentDiff, stateRef.current.skin).then((res) => {
+      const currentUsername = stateRef.current.username;
+      submitLeaderboardScore(currentUsername, currentScore, currentDiff, stateRef.current.skin).then((res) => {
         if (res && res.rank) {
           setSubmittedRank(res.rank);
         }
@@ -235,7 +238,7 @@ export const FlappyBird: React.FC = () => {
     particlesRef.current.push(
       ...createImpactParticles(birdRef.current, SKINS[stateRef.current.skin].bodyColor)
     );
-  }, [username]);
+  }, []);
 
   const handleScoreIncrement = useCallback(() => {
     setScore((prev) => {
