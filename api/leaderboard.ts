@@ -10,82 +10,11 @@ interface LeaderboardEntry {
   timestamp: number;
 }
 
-const SEED_ENTRIES: LeaderboardEntry[] = [
-  {
-    id: 'gino_champ',
-    username: 'Gino_Champ',
-    score: 45,
-    difficulty: 'classic',
-    skin: 'gino',
-    timestamp: 1728910000000,
-  },
-  {
-    id: 'jewel_star',
-    username: 'Jewel_Star',
-    score: 38,
-    difficulty: 'classic',
-    skin: 'jewel',
-    timestamp: 1728911000000,
-  },
-  {
-    id: 'rj_ace',
-    username: 'RJ_Ace',
-    score: 35,
-    difficulty: 'classic',
-    skin: 'rj',
-    timestamp: 1728912000000,
-  },
-  {
-    id: 'solarking',
-    username: 'SolarKing',
-    score: 31,
-    difficulty: 'hardcore',
-    skin: 'phoenix',
-    timestamp: 1728915000000,
-  },
-  {
-    id: 'flappymaster',
-    username: 'FlappyMaster',
-    score: 26,
-    difficulty: 'classic',
-    skin: 'classic',
-    timestamp: 1728913000000,
-  },
-  {
-    id: 'pixelrider',
-    username: 'PixelRider',
-    score: 19,
-    difficulty: 'casual',
-    skin: 'cyber',
-    timestamp: 1728914000000,
-  },
-];
-
 // Initialize Upstash Redis client with either Upstash or Vercel KV environment variables
 const redisUrl = process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL;
 const redisToken = process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN;
 
 const redis = redisUrl && redisToken ? new Redis({ url: redisUrl, token: redisToken }) : null;
-
-// Ensure initial seed entries exist in Redis (1 per username)
-async function ensureSeedData(client: Redis) {
-  try {
-    const exists = await client.exists('flappy:leaderboard:all');
-    if (!exists) {
-      for (const entry of SEED_ENTRIES) {
-        const uKey = entry.username.toLowerCase();
-        const fields: Record<string, string> = {};
-        fields[`${entry.difficulty}:${uKey}`] = JSON.stringify(entry);
-        fields[`all:${uKey}`] = JSON.stringify(entry);
-        await client.hset('flappy:profiles', fields);
-        await client.zadd(`flappy:leaderboard:${entry.difficulty}`, { score: entry.score, member: uKey });
-        await client.zadd('flappy:leaderboard:all', { score: entry.score, member: uKey });
-      }
-    }
-  } catch (err) {
-    console.error('Failed to seed Upstash Redis:', err);
-  }
-}
 
 // Parse body helper for Node incoming messages
 async function readBody(req: IncomingMessage): Promise<string> {
@@ -115,22 +44,15 @@ export default async function handler(req: IncomingMessage & { query?: Record<st
   const url = new URL(req.url || '/', 'http://localhost');
   const difficulty = url.searchParams.get('difficulty') || 'all';
 
-  // GET: Retrieve Top 100 scores (Deduplicated: 1 entry per username)
+  // GET: Retrieve Top 100 scores (Deduplicated: 1 entry per username, no fake population)
   if (req.method === 'GET') {
     if (!redis) {
-      // Graceful fallback if Upstash environment variables are not yet configured on Vercel
-      let list = [...SEED_ENTRIES];
-      if (difficulty !== 'all') {
-        list = list.filter((e) => e.difficulty === difficulty);
-      }
-      list.sort((a, b) => b.score - a.score);
       res.setHeader('Content-Type', 'application/json');
-      res.end(JSON.stringify({ success: true, leaderboard: list, note: 'Running in demo mode. Add UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN in Vercel to activate cloud Redis.' }));
+      res.end(JSON.stringify({ success: true, leaderboard: [] }));
       return;
     }
 
     try {
-      await ensureSeedData(redis);
       const key = difficulty !== 'all' ? `flappy:leaderboard:${difficulty}` : 'flappy:leaderboard:all';
       const topUsernames = await redis.zrange<string[]>(key, 0, 99, { rev: true });
 
