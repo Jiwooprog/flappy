@@ -1034,8 +1034,8 @@ body {
   }
   .modal-actions-trio {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 8px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
   }
   .game-over-user-tag {
     min-width: 0;
@@ -1043,9 +1043,6 @@ body {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-  }
-  .modal-actions-trio .arcade-btn:first-child {
-    grid-column: 1 / -1;
   }
   .panel-content-grid {
     grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
@@ -1908,9 +1905,24 @@ body {
 }
 
 .modal-actions-trio {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 6px;
   width: 100%;
+}
+
+.modal-actions-trio .arcade-btn {
+  min-width: 0;
+  padding-inline: 3px;
+  font-size: clamp(8px, 2.5vw, 11px);
+  white-space: nowrap;
+}
+
+.modal-actions-trio .arcade-btn svg {
+  flex: 0 0 auto;
+  width: 13px;
+  height: 13px;
+  margin-right: 3px;
 }
 
 .leader-btn {
@@ -1926,12 +1938,6 @@ body {
 
 @media (max-width: 480px) {
   .game-over-card .modal-actions-trio {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 8px;
-  }
-
-  .game-over-card .modal-actions-trio .arcade-btn:first-child {
-    grid-column: 1 / -1;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
