@@ -1032,12 +1032,20 @@ body {
   .modal-actions-trio {
     min-width: 0;
   }
+  .modal-actions-trio {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
   .game-over-user-tag {
     min-width: 0;
     max-width: 55%;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+  .modal-actions-trio .arcade-btn:first-child {
+    grid-column: 1 / -1;
   }
   .panel-content-grid {
     grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
