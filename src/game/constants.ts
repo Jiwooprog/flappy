@@ -3,6 +3,7 @@ import ginoImg from '../assets/gino.jpg';
 import jewelImg from '../assets/jewel.jpg';
 import rjImg from '../assets/rj.jpg';
 import junjunImg from '../assets/junjun.png';
+import bongbongImg from '../assets/bongbong.jpg';
 
 export const CANVAS_WIDTH = 380;
 export const CANVAS_HEIGHT = 620;
@@ -115,6 +116,19 @@ export const SKINS: Record<BirdSkin, SkinDefinition> = {
     glowColor: 'rgba(249, 115, 22, 0.65)',
     particleColor: '#fdba74',
     imageUrl: junjunImg,
+  },
+  bongbong: {
+    id: 'bongbong',
+    name: 'Bongbong',
+    tagline: 'Snack-fueled sky champ',
+    bodyColor: '#7c3aed',
+    bellyColor: '#c4b5fd',
+    wingColor: '#5b21b6',
+    beakColor: '#fbbf24',
+    eyeColor: '#ffffff',
+    glowColor: 'rgba(124, 58, 237, 0.65)',
+    particleColor: '#a78bfa',
+    imageUrl: bongbongImg,
   },
   cyber: {
     id: 'cyber',
