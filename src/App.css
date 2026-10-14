@@ -1923,3 +1923,15 @@ body {
   transform: translateY(-2px);
   box-shadow: 0 6px 0px #4c1d95, 0 10px 16px rgba(0, 0, 0, 0.4);
 }
+
+@media (max-width: 480px) {
+  .game-over-card .modal-actions-trio {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .game-over-card .modal-actions-trio .arcade-btn:first-child {
+    grid-column: 1 / -1;
+  }
+}
