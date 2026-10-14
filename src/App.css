@@ -123,6 +123,8 @@ body {
   border: 3px solid #1f2937;
   cursor: pointer;
   background: #000;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: none;
 }
 
 .game-canvas {
