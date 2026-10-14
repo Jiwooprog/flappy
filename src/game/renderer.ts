@@ -1,11 +1,13 @@
 import type { Bird, Pipe, Particle, Theme } from './types';
 import { CANVAS_WIDTH, CANVAS_HEIGHT, GROUND_HEIGHT, SKINS, THEME_PALETTES, type SkinDefinition } from './constants';
-import { PIPE_LIP_HEIGHT, PIPE_LIP_OVERHANG } from './physics';
+import { PIPE_LIP_HEIGHT, PIPE_LIP_OVERHANG, PIPE_WIDTH } from './physics';
 
 export class GameRenderer {
   private ctx: CanvasRenderingContext2D;
+  private reduceEffects = window.matchMedia('(pointer: coarse)').matches;
   private imageCache = new Map<string, HTMLImageElement>();
   private skyGradients = new Map<Theme, CanvasGradient>();
+  private pipeTextures = new Map<Theme, { body: HTMLCanvasElement; lip: HTMLCanvasElement }>();
   private readonly starPositions = [
     [30, 40], [80, 80], [130, 30], [210, 60], [260, 110],
     [45, 130], [160, 140], [330, 120], [100, 180], [240, 190],
@@ -23,6 +25,48 @@ export class GameRenderer {
       this.imageCache.set(src, img);
     }
     return img;
+  }
+
+  private getPipeTextures(theme: Theme, palette: (typeof THEME_PALETTES)['day']) {
+    let textures = this.pipeTextures.get(theme);
+    if (textures) return textures;
+
+    const body = document.createElement('canvas');
+    body.width = PIPE_WIDTH;
+    body.height = 1;
+    const bodyCtx = body.getContext('2d');
+    if (!bodyCtx) throw new Error('Unable to create pipe texture context');
+    const bodyGradient = bodyCtx.createLinearGradient(0, 0, PIPE_WIDTH, 0);
+    bodyGradient.addColorStop(0, palette.pipeShadow);
+    bodyGradient.addColorStop(0.25, palette.pipeMain);
+    bodyGradient.addColorStop(0.45, palette.pipeHighlight);
+    bodyGradient.addColorStop(0.7, palette.pipeMain);
+    bodyGradient.addColorStop(1, palette.pipeShadow);
+    bodyCtx.fillStyle = bodyGradient;
+    bodyCtx.fillRect(0, 0, PIPE_WIDTH, 1);
+
+    const lip = document.createElement('canvas');
+    lip.width = PIPE_WIDTH + PIPE_LIP_OVERHANG * 2;
+    lip.height = PIPE_LIP_HEIGHT;
+    const lipCtx = lip.getContext('2d');
+    if (!lipCtx) throw new Error('Unable to create pipe lip texture context');
+    const lipGradient = lipCtx.createLinearGradient(0, 0, lip.width, 0);
+    lipGradient.addColorStop(0, palette.pipeShadow);
+    lipGradient.addColorStop(0.25, palette.pipeMain);
+    lipGradient.addColorStop(0.45, palette.pipeHighlight);
+    lipGradient.addColorStop(0.7, palette.pipeMain);
+    lipGradient.addColorStop(1, palette.pipeShadow);
+    lipCtx.fillStyle = lipGradient;
+    lipCtx.fillRect(0, 0, lip.width, lip.height);
+    lipCtx.strokeStyle = palette.pipeBorder;
+    lipCtx.lineWidth = 2.5;
+    lipCtx.strokeRect(0, 0, lip.width, lip.height);
+    lipCtx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+    lipCtx.fillRect(PIPE_LIP_OVERHANG + 12, 3, 5, PIPE_LIP_HEIGHT - 6);
+
+    textures = { body, lip };
+    this.pipeTextures.set(theme, textures);
+    return textures;
   }
 
   public clear() {
@@ -75,7 +119,7 @@ export class GameRenderer {
       // Moon
       ctx.fillStyle = '#fef08a';
       ctx.shadowColor = '#fef08a';
-      ctx.shadowBlur = 12;
+      ctx.shadowBlur = this.reduceEffects ? 0 : 12;
       ctx.beginPath();
       ctx.arc(300, 70, 22, 0, Math.PI * 2);
       ctx.fill();
@@ -194,11 +238,12 @@ export class GameRenderer {
 
   public renderPipes(pipes: Pipe[], theme: Theme) {
     const palette = THEME_PALETTES[theme];
+    const textures = this.getPipeTextures(theme, palette);
 
     for (const pipe of pipes) {
-      this.renderSinglePipe(pipe.x, 0, pipe.width, pipe.topHeight, true, palette);
+      this.renderSinglePipe(pipe.x, 0, pipe.width, pipe.topHeight, true, textures);
       const bottomH = CANVAS_HEIGHT - GROUND_HEIGHT - pipe.bottomY;
-      this.renderSinglePipe(pipe.x, pipe.bottomY, pipe.width, bottomH, false, palette);
+      this.renderSinglePipe(pipe.x, pipe.bottomY, pipe.width, bottomH, false, textures);
     }
   }
 
@@ -208,7 +253,7 @@ export class GameRenderer {
     width: number,
     height: number,
     isTop: boolean,
-    palette: (typeof THEME_PALETTES)['day']
+    textures: { body: HTMLCanvasElement; lip: HTMLCanvasElement }
   ) {
     const ctx = this.ctx;
     if (height <= 0) return;
@@ -217,19 +262,11 @@ export class GameRenderer {
 
     // Draw in pipe-local coordinates so one gradient serves both body and cap.
     ctx.translate(x, 0);
-    const pipeGrad = ctx.createLinearGradient(0, 0, width, 0);
-    pipeGrad.addColorStop(0, palette.pipeShadow);
-    pipeGrad.addColorStop(0.25, palette.pipeMain);
-    pipeGrad.addColorStop(0.45, palette.pipeHighlight);
-    pipeGrad.addColorStop(0.7, palette.pipeMain);
-    pipeGrad.addColorStop(1, palette.pipeShadow);
-
     const bodyY = isTop ? 0 : y + PIPE_LIP_HEIGHT;
     const bodyH = isTop ? height - PIPE_LIP_HEIGHT : height - PIPE_LIP_HEIGHT;
 
     if (bodyH > 0) {
-      ctx.fillStyle = pipeGrad;
-      ctx.fillRect(0, bodyY, width, bodyH);
+      ctx.drawImage(textures.body, 0, bodyY, width, bodyH);
 
       // Outlines
       ctx.strokeStyle = palette.pipeBorder;
@@ -239,19 +276,9 @@ export class GameRenderer {
 
     // 2. Pipe Lip Cap
     const lipX = -PIPE_LIP_OVERHANG;
-    const lipW = width + PIPE_LIP_OVERHANG * 2;
     const lipY = isTop ? height - PIPE_LIP_HEIGHT : y;
 
-    ctx.fillStyle = pipeGrad;
-    ctx.fillRect(lipX, lipY, lipW, PIPE_LIP_HEIGHT);
-
-    ctx.strokeStyle = palette.pipeBorder;
-    ctx.lineWidth = 2.5;
-    ctx.strokeRect(lipX, lipY, lipW, PIPE_LIP_HEIGHT);
-
-    // Lip highlight stripe
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
-    ctx.fillRect(lipX + 12, lipY + 3, 5, PIPE_LIP_HEIGHT - 6);
+    ctx.drawImage(textures.lip, lipX, lipY);
 
     ctx.restore();
   }
@@ -267,7 +294,7 @@ export class GameRenderer {
     // Glow effect for cyber/phoenix/midnight
     if (skin.glowColor) {
       ctx.shadowColor = skin.glowColor;
-      ctx.shadowBlur = 12;
+      ctx.shadowBlur = this.reduceEffects ? 0 : 12;
     }
 
     // Flapping Wing coordinates

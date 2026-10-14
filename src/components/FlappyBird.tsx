@@ -273,6 +273,8 @@ export const FlappyBird: React.FC = () => {
 
     const renderer = new GameRenderer(ctx);
     let isVisible = !document.hidden;
+    let lastRenderTimestamp = 0;
+    const minFrameInterval = 1000 / 60;
 
     const handleVisibilityChange = () => {
       isVisible = !document.hidden;
@@ -283,6 +285,7 @@ export const FlappyBird: React.FC = () => {
         cancelAnimationFrame(rafIdRef.current);
         rafIdRef.current = null;
         lastTimeRef.current = null;
+        lastRenderTimestamp = 0;
       }
     };
 
@@ -290,6 +293,11 @@ export const FlappyBird: React.FC = () => {
 
     const loop = (timestamp: number) => {
       if (!isVisible) return;
+      if (timestamp - lastRenderTimestamp < minFrameInterval) {
+        rafIdRef.current = requestAnimationFrame(loop);
+        return;
+      }
+      lastRenderTimestamp = timestamp;
       if (!lastTimeRef.current) {
         lastTimeRef.current = timestamp;
       }

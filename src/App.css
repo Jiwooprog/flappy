@@ -1042,6 +1042,15 @@ body {
   }
 }
 
+@media (pointer: coarse) {
+  .main-menu-container,
+  .hud-icon-btn,
+  .skin-quick-badge,
+  .modal-overlay {
+    backdrop-filter: none;
+  }
+}
+
 
 /* --------------------------------------------------------------------------
    Main Menu Styling
