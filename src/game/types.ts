@@ -1,6 +1,6 @@
 export type GameState = 'MENU' | 'IDLE' | 'PLAYING' | 'GAMEOVER' | 'PAUSED';
 
-export type BirdSkin = 'classic' | 'cyber' | 'phoenix' | 'midnight' | 'gino' | 'jewel' | 'rj';
+export type BirdSkin = 'classic' | 'cyber' | 'phoenix' | 'midnight' | 'gino' | 'jewel' | 'rj' | 'junjun';
 
 export type Difficulty = 'casual' | 'classic' | 'hardcore';
 

@@ -2,6 +2,7 @@ import type { Difficulty, DifficultyConfig, BirdSkin, Theme } from './types';
 import ginoImg from '../assets/gino.jpg';
 import jewelImg from '../assets/jewel.jpg';
 import rjImg from '../assets/rj.jpg';
+import junjunImg from '../assets/junjun.png';
 
 export const CANVAS_WIDTH = 380;
 export const CANVAS_HEIGHT = 620;
@@ -101,6 +102,19 @@ export const SKINS: Record<BirdSkin, SkinDefinition> = {
     glowColor: 'rgba(16, 185, 129, 0.7)',
     particleColor: '#34d399',
     imageUrl: rjImg,
+  },
+  junjun: {
+    id: 'junjun',
+    name: 'Junjun',
+    tagline: 'The newest face in the skies',
+    bodyColor: '#f97316',
+    bellyColor: '#fed7aa',
+    wingColor: '#7c2d12',
+    beakColor: '#fbbf24',
+    eyeColor: '#ffffff',
+    glowColor: 'rgba(249, 115, 22, 0.65)',
+    particleColor: '#fdba74',
+    imageUrl: junjunImg,
   },
   cyber: {
     id: 'cyber',
