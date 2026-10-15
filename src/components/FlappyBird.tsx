@@ -396,6 +396,10 @@ export const FlappyBird: React.FC = () => {
   // Global Keyboard listener
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't intercept keys when the user is typing in an input field
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+
       // Flap keys
       if (e.code === 'Space' || e.code === 'ArrowUp' || e.key === 'w' || e.key === 'W') {
         e.preventDefault();
