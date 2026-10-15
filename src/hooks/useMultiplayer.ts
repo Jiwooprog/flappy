@@ -81,6 +81,7 @@ export function useMultiplayer(opts: UseMPOptions): UseMPReturn {
   const countingDownRef = useRef(false);
   const rematchRequestedRef = useRef(false);
   const opponentWantsRematchRef = useRef(false);
+  const isHostRef = useRef(false);   // true only for the player who called createRoom()
   const roundNumberRef = useRef(roundNumber);
   roundNumberRef.current = roundNumber;
   const optsRef = useRef(opts);
@@ -139,7 +140,15 @@ export function useMultiplayer(opts: UseMPOptions): UseMPReturn {
   // ---------------------------------------------------------------------------
   // Rematch actions
   // ---------------------------------------------------------------------------
+
+  /**
+   * Only ever called by the HOST. Generates the next round seed, updates
+   * local state, broadcasts REMATCH_ACCEPT, and starts the countdown.
+   * The joiner never calls this — it waits for REMATCH_ACCEPT from the host.
+   */
   const acceptRematch = useCallback(() => {
+    if (!isHostRef.current) return; // safety guard — only host is authority
+
     const nextSeed = Math.floor(Math.random() * 10000000);
     const nextRound = roundNumberRef.current + 1;
     const startAt = Date.now() + 3200;
@@ -175,9 +184,20 @@ export function useMultiplayer(opts: UseMPOptions): UseMPReturn {
   const requestRematch = useCallback(() => {
     rematchRequestedRef.current = true;
     setRematchRequested(true);
-    if (opponentWantsRematchRef.current) {
-      acceptRematch();
+
+    if (isHostRef.current) {
+      // HOST: if joiner already signalled, start immediately; else signal and wait
+      if (opponentWantsRematchRef.current) {
+        acceptRematch();
+      } else {
+        channelRef.current?.send({
+          type: 'broadcast',
+          event: 'mp',
+          payload: { type: 'REMATCH', player: myStateRef.current },
+        });
+      }
     } else {
+      // JOINER: always just broadcast REMATCH and wait for host's REMATCH_ACCEPT
       channelRef.current?.send({
         type: 'broadcast',
         event: 'mp',
@@ -198,6 +218,7 @@ export function useMultiplayer(opts: UseMPOptions): UseMPReturn {
     setRoundNumber(1);
     rematchRequestedRef.current = false;
     opponentWantsRematchRef.current = false;
+    isHostRef.current = true;   // this player is the host for this room
     setRematchRequested(false);
     setOpponentWantsRematch(false);
     myStateRef.current = makeInitialPlayer(myId, username, skin);
@@ -241,30 +262,16 @@ export function useMultiplayer(opts: UseMPOptions): UseMPReturn {
       }
 
       if (payload.type === 'REMATCH') {
+        // Joiner signals rematch → mark it; if host already clicked, start immediately
         opponentWantsRematchRef.current = true;
         setOpponentWantsRematch(true);
         if (rematchRequestedRef.current) {
-          acceptRematchRef.current();
+          acceptRematchRef.current(); // host is sole authority: generates seed & starts countdown
         }
         return;
       }
 
-      if (payload.type === 'REMATCH_ACCEPT') {
-        const nextSeed = payload.roundSeed ?? Math.floor(Math.random() * 10000000);
-        const nextRound = payload.round ?? (roundNumberRef.current + 1);
-        rematchRequestedRef.current = false;
-        opponentWantsRematchRef.current = false;
-        setRematchRequested(false);
-        setOpponentWantsRematch(false);
-        setRoundNumber(nextRound);
-        setRoundSeed(nextSeed);
-
-        myStateRef.current = makeInitialPlayer(myId, username, skin);
-        setOpponentState((prev) => (prev ? { ...prev, y: 270, vy: 0, score: 0, alive: true, finished: false } : null));
-
-        startCountdown(payload.startAt);
-        return;
-      }
+      // NOTE: Host never receives REMATCH_ACCEPT — it's the sender (self:false).
     });
 
     ch.subscribe((status) => {
@@ -283,6 +290,7 @@ export function useMultiplayer(opts: UseMPOptions): UseMPReturn {
     setRoundNumber(1);
     rematchRequestedRef.current = false;
     opponentWantsRematchRef.current = false;
+    isHostRef.current = false;   // this player is the joiner
     setRematchRequested(false);
     setOpponentWantsRematch(false);
     myStateRef.current = makeInitialPlayer(myId, username, skin);

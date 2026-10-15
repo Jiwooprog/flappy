@@ -45,7 +45,6 @@ interface MultiplayerGameProps {
   rematchRequested: boolean;
   opponentWantsRematch: boolean;
   onRequestRematch: () => void;
-  onAcceptRematch: () => void;
   onRecordRoundWin: (winner: 'me' | 'opponent') => void;
 }
 
@@ -81,7 +80,6 @@ export const MultiplayerGame: React.FC<MultiplayerGameProps> = ({
   rematchRequested,
   opponentWantsRematch,
   onRequestRematch,
-  onAcceptRematch,
   onRecordRoundWin,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -628,36 +626,23 @@ export const MultiplayerGame: React.FC<MultiplayerGameProps> = ({
 
               {/* Rematch Actions */}
               <div className="mp-result-actions">
-                {opponentWantsRematch ? (
-                  <button
-                    type="button"
-                    className="arcade-btn primary-btn mp-action-btn pulse-glow"
-                    onClick={() => {
-                      setGameResult(null);
-                      gameResultRef.current = null;
-                      onAcceptRematch();
-                    }}
-                  >
-                    <RefreshCw size={18} className="mr-2" />
-                    ACCEPT REMATCH!
-                  </button>
-                ) : rematchRequested ? (
+                {rematchRequested ? (
                   <button
                     type="button"
                     className="arcade-btn secondary-btn mp-action-btn opacity-75 cursor-not-allowed"
                     disabled
                   >
                     <Loader2 size={16} className="animate-spin mr-2" />
-                    WAITING FOR OPPONENT...
+                    {opponentWantsRematch ? 'STARTING...' : 'WAITING FOR OPPONENT...'}
                   </button>
                 ) : (
                   <button
                     type="button"
-                    className="arcade-btn primary-btn mp-action-btn"
+                    className={`arcade-btn primary-btn mp-action-btn${opponentWantsRematch ? ' pulse-glow' : ''}`}
                     onClick={onRequestRematch}
                   >
                     <RefreshCw size={18} className="mr-2" />
-                    PLAY AGAIN (ROUND {roundNumber + 1})
+                    {opponentWantsRematch ? 'PLAY AGAIN!' : `PLAY AGAIN (ROUND ${roundNumber + 1})`}
                   </button>
                 )}
 

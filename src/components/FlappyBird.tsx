@@ -682,7 +682,6 @@ export const FlappyBird: React.FC = () => {
             rematchRequested={mp.rematchRequested}
             opponentWantsRematch={mp.opponentWantsRematch}
             onRequestRematch={mp.requestRematch}
-            onAcceptRematch={mp.acceptRematch}
             onRecordRoundWin={mp.recordRoundWin}
           />
         </div>
