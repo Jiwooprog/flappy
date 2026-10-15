@@ -59,6 +59,7 @@ export function useMultiplayer(opts: UseMPOptions): UseMPReturn {
   const broadcastTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const countdownTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const joinAttemptTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const countingDownRef = useRef(false);
   const optsRef = useRef(opts);
   optsRef.current = opts;
 
@@ -70,6 +71,9 @@ export function useMultiplayer(opts: UseMPOptions): UseMPReturn {
   }, []);
 
   const startCountdown = useCallback(() => {
+    if (countingDownRef.current) return;
+    countingDownRef.current = true;
+
     if (joinAttemptTimerRef.current) {
       clearInterval(joinAttemptTimerRef.current);
       joinAttemptTimerRef.current = null;
@@ -89,6 +93,7 @@ export function useMultiplayer(opts: UseMPOptions): UseMPReturn {
       if (remaining <= 0) {
         clearInterval(countdownTimerRef.current!);
         countdownTimerRef.current = null;
+        countingDownRef.current = false;
         setPhase('PLAYING');
         optsRef.current.onCountdownEnd();
       }
@@ -230,6 +235,7 @@ export function useMultiplayer(opts: UseMPOptions): UseMPReturn {
     if (broadcastTimerRef.current) clearInterval(broadcastTimerRef.current);
     if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
     if (joinAttemptTimerRef.current) clearInterval(joinAttemptTimerRef.current);
+    countingDownRef.current = false;
     setPhase('LOBBY');
     setRoomCode('');
     setOpponentState(null);
