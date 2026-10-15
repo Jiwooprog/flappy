@@ -658,6 +658,37 @@ export const MultiplayerGame: React.FC<MultiplayerGameProps> = ({
             </div>
           </div>
         )}
+
+        {/* Floating rematch notification when opponent wants rematch but result card isn't showing */}
+        {opponentWantsRematch && !gameResult && phase !== 'COUNTDOWN' && (
+          <div className="mp-rematch-notify animate-pop-up" onClick={(e) => e.stopPropagation()}>
+            <div className="mp-rematch-notify-content">
+              <RefreshCw size={18} className="mp-rematch-notify-icon" />
+              <span className="mp-rematch-notify-text">
+                {opponentState?.username ?? 'Opponent'} wants a rematch!
+              </span>
+            </div>
+            {!rematchRequested ? (
+              <button
+                type="button"
+                className="arcade-btn primary-btn mp-rematch-notify-btn pulse-glow"
+                onClick={onRequestRematch}
+              >
+                <RefreshCw size={16} className="mr-2" />
+                ACCEPT REMATCH
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="arcade-btn secondary-btn mp-rematch-notify-btn opacity-75 cursor-not-allowed"
+                disabled
+              >
+                <Loader2 size={16} className="animate-spin mr-2" />
+                STARTING...
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Leave button during active round */}
