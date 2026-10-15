@@ -1,8 +1,8 @@
 /**
  * MultiplayerGame – renders the local player's canvas game plus a live
- * opponent status bar.  Both players see the same seeded pipe sequence.
+ * opponent status bar, 1v1 match series score, and seamless in-room rematches.
  *
- * Pipe seeding: the room code is hashed into a numeric seed;
+ * Pipe seeding: the room code / round seed is hashed into a numeric seed;
  * createPipe() is replaced with a seeded variant here.
  */
 import React, { useEffect, useRef, useCallback, useState } from 'react';
@@ -24,7 +24,7 @@ import { GameRenderer } from '../game/renderer';
 import { sound } from '../game/audio';
 import { seededRng, roomCodeToSeed } from '../game/multiplayerTypes';
 import type { MPPlayerState } from '../game/multiplayerTypes';
-import { ArrowLeft, Wifi, Skull } from 'lucide-react';
+import { ArrowLeft, Wifi, Skull, RefreshCw, Loader2 } from 'lucide-react';
 
 interface MultiplayerGameProps {
   roomCode: string;
@@ -38,6 +38,15 @@ interface MultiplayerGameProps {
   /** countdown value from hook (0 means game is live) */
   countdown: number;
   phase: 'COUNTDOWN' | 'PLAYING' | 'RESULT';
+  myWins: number;
+  opponentWins: number;
+  roundNumber: number;
+  roundSeed: number;
+  rematchRequested: boolean;
+  opponentWantsRematch: boolean;
+  onRequestRematch: () => void;
+  onAcceptRematch: () => void;
+  onRecordRoundWin: (winner: 'me' | 'opponent') => void;
 }
 
 // Seeded pipe creator that matches physics.createPipe signature
@@ -65,6 +74,15 @@ export const MultiplayerGame: React.FC<MultiplayerGameProps> = ({
   onLeave,
   countdown,
   phase,
+  myWins,
+  opponentWins,
+  roundNumber,
+  roundSeed,
+  rematchRequested,
+  opponentWantsRematch,
+  onRequestRematch,
+  onAcceptRematch,
+  onRecordRoundWin,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const birdRef = useRef<Bird>(createInitialBird());
@@ -87,17 +105,24 @@ export const MultiplayerGame: React.FC<MultiplayerGameProps> = ({
   const config = DIFFICULTY_CONFIGS[difficulty];
   const currentSkin = SKINS[skin];
 
-  // Build seeded RNG once per room
+  // Re-seed RNG when roundSeed or roomCode changes
   useEffect(() => {
-    rngRef.current = seededRng(roomCodeToSeed(roomCode));
-  }, [roomCode]);
+    const seed = roundSeed || roomCodeToSeed(roomCode);
+    rngRef.current = seededRng(seed);
+    setGameResult(null);
+    setIsAlive(true);
+    setScore(0);
+    aliveRef.current = true;
+    scoreRef.current = 0;
+  }, [roomCode, roundSeed]);
 
   // Check if opponent died → we win (if we're still alive)
   useEffect(() => {
-    if (opponentState && !opponentState.alive && aliveRef.current && phase === 'PLAYING') {
+    if (opponentState && !opponentState.alive && aliveRef.current && phase === 'PLAYING' && !gameResult) {
       setGameResult('WIN');
+      onRecordRoundWin('me');
     }
-  }, [opponentState, phase]);
+  }, [opponentState, phase, gameResult, onRecordRoundWin]);
 
   // -----------------------------------------------------------------------
   // Flap handler
@@ -150,7 +175,7 @@ export const MultiplayerGame: React.FC<MultiplayerGameProps> = ({
     setScore(0);
     setIsAlive(true);
     setGameResult(null);
-    rngRef.current = seededRng(roomCodeToSeed(roomCode)); // reset seed
+    rngRef.current = seededRng(roundSeed || roomCodeToSeed(roomCode));
 
     const loop = (timestamp: number) => {
       if (!lastTimeRef.current) lastTimeRef.current = timestamp;
@@ -197,6 +222,7 @@ export const MultiplayerGame: React.FC<MultiplayerGameProps> = ({
           aliveRef.current = false;
           setIsAlive(false);
           setGameResult('LOSE');
+          onRecordRoundWin('opponent');
           flashAlphaRef.current = 0.85;
           shakeTimerRef.current = 0.28;
           sound.playHit();
@@ -205,7 +231,7 @@ export const MultiplayerGame: React.FC<MultiplayerGameProps> = ({
           onStateChange({ alive: false, finished: true });
         }
 
-        // Sync Y position periodically (state hook handles interval)
+        // Sync Y position periodically
         onStateChange({ y: birdRef.current.y, vy: birdRef.current.vy });
       } else {
         // Dead: bird falls
@@ -214,45 +240,47 @@ export const MultiplayerGame: React.FC<MultiplayerGameProps> = ({
           birdRef.current.y += birdRef.current.vy * dt;
           birdRef.current.rotation = Math.min(Math.PI / 2, birdRef.current.rotation + dt * 5);
         }
-        scrollOffsetRef.current += 30 * dt;
       }
 
+      // Particles
       particlesRef.current = updateParticles(particlesRef.current, dt);
 
+      // Decrement screen fx
       if (shakeTimerRef.current > 0) shakeTimerRef.current -= dt;
       if (flashAlphaRef.current > 0) flashAlphaRef.current = Math.max(0, flashAlphaRef.current - dt * 2.8);
 
-      // --- Render ---
+      // RENDER
       ctx.save();
       if (shakeTimerRef.current > 0) {
-        const mag = (shakeTimerRef.current / 0.28) * 7;
-        ctx.translate((Math.random() - 0.5) * mag, (Math.random() - 0.5) * mag);
+        const shakeMag = (shakeTimerRef.current / 0.28) * 7;
+        ctx.translate((Math.random() - 0.5) * shakeMag, (Math.random() - 0.5) * shakeMag);
       }
 
       renderer.clear();
-      renderer.renderBackground('night', scrollOffsetRef.current);
-      renderer.renderPipes(pipesRef.current, 'night');
-      renderer.renderGround('night', scrollOffsetRef.current);
+      renderer.renderBackground('day', scrollOffsetRef.current);
+      renderer.renderPipes(pipesRef.current, 'day');
+      renderer.renderGround('day', scrollOffsetRef.current);
       renderer.renderParticles(particlesRef.current);
+
+      // Render local player bird
       renderer.renderBird(birdRef.current, skin);
 
-      // Draw opponent ghost bird
+      // Render opponent ghost bird
       if (opponentState && opponentState.alive) {
-        const ghostBird: Bird = {
-          x: birdRef.current.x - 30, // slightly behind local bird
+        ctx.save();
+        ctx.globalAlpha = 0.55;
+        const opponentBird: Bird = {
+          x: birdRef.current.x,
           y: opponentState.y,
           vy: opponentState.vy,
-          rotation: opponentState.vy > 100 ? 0.4 : -0.2,
-          radius: 14,
-          wingFrame: Math.floor(Date.now() / 100) % 4,
+          radius: birdRef.current.radius,
+          rotation: Math.min(Math.PI / 2, Math.max(-Math.PI / 4, opponentState.vy * 0.04)),
+          wingFrame: birdRef.current.wingFrame,
           wingTimer: 0,
         };
-        ctx.globalAlpha = 0.55;
-        renderer.renderBird(
-          ghostBird,
-          (opponentState.skin as BirdSkin) ?? 'classic'
-        );
-        ctx.globalAlpha = 1;
+        const oppSkinKey = (opponentState.skin as BirdSkin) in SKINS ? (opponentState.skin as BirdSkin) : 'classic';
+        renderer.renderBird(opponentBird, oppSkinKey);
+        ctx.restore();
       }
 
       renderer.renderFlash(flashAlphaRef.current);
@@ -267,24 +295,31 @@ export const MultiplayerGame: React.FC<MultiplayerGameProps> = ({
       if (rafIdRef.current) cancelAnimationFrame(rafIdRef.current);
       lastTimeRef.current = null;
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phase]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, roundSeed]);
 
   // -----------------------------------------------------------------------
   // Render
   // -----------------------------------------------------------------------
   return (
     <div className="mp-game-wrapper">
-      {/* Top bar: scores */}
+      {/* 1v1 Series Match Scorebar */}
       <div className="mp-scorebar">
         <div className="mp-scorebar-player mine">
           <span className="mp-scorebar-name">{myUsername}</span>
+          <span className="mp-round-badge" title="Rounds won">{myWins}W</span>
           <span className="mp-scorebar-score">{score}</span>
         </div>
-        <span className="mp-scorebar-vs">VS</span>
+
+        <div className="mp-scorebar-center">
+          <span className="mp-scorebar-round">ROUND {roundNumber}</span>
+          <span className="mp-scorebar-vs">VS</span>
+        </div>
+
         <div className="mp-scorebar-player theirs">
           <span className="mp-scorebar-score">{opponentState?.score ?? 0}</span>
-          <span className="mp-scorebar-name">{opponentState?.username ?? '...'}</span>
+          <span className="mp-round-badge" title="Rounds won">{opponentWins}W</span>
+          <span className="mp-scorebar-name">{opponentState?.username ?? 'Opponent'}</span>
         </div>
       </div>
 
@@ -301,6 +336,7 @@ export const MultiplayerGame: React.FC<MultiplayerGameProps> = ({
         {phase === 'COUNTDOWN' && countdown > 0 && (
           <div className="mp-countdown-overlay">
             <div className="mp-countdown-num">{countdown}</div>
+            <div className="mp-countdown-sub">ROUND {roundNumber}</div>
           </div>
         )}
 
@@ -311,37 +347,90 @@ export const MultiplayerGame: React.FC<MultiplayerGameProps> = ({
           </div>
         )}
 
-        {/* Result overlay */}
+        {/* 1v1 Round Result Overlay */}
         {gameResult && (
-          <div className="modal-overlay animate-fade-in">
+          <div className="modal-overlay animate-fade-in mp-result-backdrop" onClick={(e) => e.stopPropagation()}>
             <div className={`mp-result-card animate-pop-up ${gameResult === 'WIN' ? 'mp-win' : 'mp-lose'}`}>
+              {/* Top Series Score Banner */}
+              <div className="mp-result-series-box">
+                <span className="mp-result-series-title">1v1 MATCH SCORE</span>
+                <div className="mp-result-series-scoreboard">
+                  <div className="mp-series-side">
+                    <span className="mp-series-player-name">{myUsername}</span>
+                    <span className="mp-series-wins-num">{myWins}</span>
+                  </div>
+                  <span className="mp-series-colon">:</span>
+                  <div className="mp-series-side">
+                    <span className="mp-series-wins-num">{opponentWins}</span>
+                    <span className="mp-series-player-name">{opponentState?.username ?? 'Opponent'}</span>
+                  </div>
+                </div>
+              </div>
+
               <div className="mp-result-emoji">{gameResult === 'WIN' ? '🏆' : '💀'}</div>
-              <div className="mp-result-label">{gameResult === 'WIN' ? 'YOU WIN!' : 'YOU CRASHED!'}</div>
+              <div className="mp-result-label">
+                {gameResult === 'WIN' ? 'ROUND WON!' : 'ROUND LOST!'}
+              </div>
               <div className="mp-result-sub">
                 {gameResult === 'WIN'
-                  ? `${opponentState?.username ?? 'Opponent'} bit the dust.`
-                  : `Better luck next time!`}
+                  ? `You outlasted ${opponentState?.username ?? 'your opponent'}!`
+                  : `You crashed first. Time for a rematch!`}
               </div>
+
               <div className="mp-result-scores">
-                <span>Your score: <strong>{score}</strong></span>
-                <span>Their score: <strong>{opponentState?.score ?? 0}</strong></span>
+                <span>Pipes passed: <strong>{score}</strong></span>
+                <span>Theirs: <strong>{opponentState?.score ?? 0}</strong></span>
               </div>
-              <button
-                type="button"
-                className="arcade-btn primary-btn mt-4"
-                onClick={onLeave}
-              >
-                BACK TO MENU
-              </button>
+
+              {/* Rematch Actions */}
+              <div className="mp-result-actions">
+                {opponentWantsRematch ? (
+                  <button
+                    type="button"
+                    className="arcade-btn primary-btn mp-action-btn pulse-glow"
+                    onClick={onAcceptRematch}
+                  >
+                    <RefreshCw size={18} className="mr-2" />
+                    ACCEPT REMATCH!
+                  </button>
+                ) : rematchRequested ? (
+                  <button
+                    type="button"
+                    className="arcade-btn secondary-btn mp-action-btn opacity-75 cursor-not-allowed"
+                    disabled
+                  >
+                    <Loader2 size={16} className="animate-spin mr-2" />
+                    WAITING FOR OPPONENT...
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="arcade-btn primary-btn mp-action-btn"
+                    onClick={onRequestRematch}
+                  >
+                    <RefreshCw size={18} className="mr-2" />
+                    PLAY AGAIN (ROUND {roundNumber + 1})
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  className="arcade-btn secondary-btn mp-action-btn mp-leave-room-btn"
+                  onClick={onLeave}
+                >
+                  <ArrowLeft size={16} className="mr-2" />
+                  LEAVE ROOM
+                </button>
+              </div>
             </div>
           </div>
         )}
       </div>
 
-      {/* Leave button */}
+      {/* Leave button during active round */}
       {!gameResult && (
         <button type="button" className="mp-leave-btn" onClick={onLeave}>
-          <ArrowLeft size={14} className="mr-1" /> Leave
+          <ArrowLeft size={14} className="mr-1" /> Leave Room
         </button>
       )}
 

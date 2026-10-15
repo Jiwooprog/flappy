@@ -1,6 +1,7 @@
 /**
  * useMultiplayer – manages the full lifecycle of a multiplayer room:
  *   lobby → countdown → playing → result
+ * Supports series rounds, 1v1 match scoring, and in-room rematches.
  *
  * Uses Supabase Realtime Broadcast (no database writes needed).
  */
@@ -8,7 +9,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import { supabase } from '../game/supabase';
 import type { MPPhase, MPPlayerState, MPBroadcast } from '../game/multiplayerTypes';
-import { generateRoomCode } from '../game/multiplayerTypes';
+import { generateRoomCode, roomCodeToSeed } from '../game/multiplayerTypes';
 import type { BirdSkin } from '../game/types';
 
 const BROADCAST_HZ = 15;   // state syncs per second
@@ -21,17 +22,26 @@ interface UseMPOptions {
   onOpponentLeft: () => void;   // opponent disconnected
 }
 
-interface UseMPReturn {
+export interface UseMPReturn {
   phase: MPPhase;
   roomCode: string;
   myId: string;
   myState: MPPlayerState;
   opponentState: MPPlayerState | null;
   countdown: number;
+  myWins: number;
+  opponentWins: number;
+  roundNumber: number;
+  roundSeed: number;
+  rematchRequested: boolean;
+  opponentWantsRematch: boolean;
   createRoom: () => void;
   joinRoom: (code: string) => void;
   broadcastFlap: () => void;
   broadcastState: (patch: Partial<MPPlayerState>) => void;
+  recordRoundWin: (winner: 'me' | 'opponent') => void;
+  requestRematch: () => void;
+  acceptRematch: () => void;
   leave: () => void;
 }
 
@@ -47,8 +57,17 @@ export function useMultiplayer(opts: UseMPOptions): UseMPReturn {
   const [countdown, setCountdown] = useState(COUNTDOWN_SEC);
   const [opponentState, setOpponentState] = useState<MPPlayerState | null>(null);
 
+  // 1v1 Series Score & Rematch State
+  const [myWins, setMyWins] = useState(0);
+  const [opponentWins, setOpponentWins] = useState(0);
+  const [roundNumber, setRoundNumber] = useState(1);
+  const [roundSeed, setRoundSeed] = useState(0);
+  const [rematchRequested, setRematchRequested] = useState(false);
+  const [opponentWantsRematch, setOpponentWantsRematch] = useState(false);
+
   const myId = useRef(`p_${Math.random().toString(36).slice(2, 9)}`).current;
   const myStateRef = useRef<MPPlayerState>(makeInitialPlayer(myId, username, skin));
+
   // Keep myStateRef updated if username or skin change
   useEffect(() => {
     myStateRef.current.username = username;
@@ -100,12 +119,67 @@ export function useMultiplayer(opts: UseMPOptions): UseMPReturn {
     }, 1000);
   }, []);
 
+  const recordRoundWin = useCallback((winner: 'me' | 'opponent') => {
+    if (winner === 'me') {
+      setMyWins((prev) => prev + 1);
+    } else {
+      setOpponentWins((prev) => prev + 1);
+    }
+  }, []);
+
   // ---------------------------------------------------------------------------
-  // Actions
+  // Rematch actions
+  // ---------------------------------------------------------------------------
+  const acceptRematch = useCallback(() => {
+    const nextSeed = Math.floor(Math.random() * 10000000);
+    const nextRound = roundNumber + 1;
+    setRoundNumber(nextRound);
+    setRoundSeed(nextSeed);
+    setRematchRequested(false);
+    setOpponentWantsRematch(false);
+
+    myStateRef.current = makeInitialPlayer(myId, username, skin);
+    setOpponentState((prev) => (prev ? { ...prev, y: 270, vy: 0, score: 0, alive: true, finished: false } : null));
+
+    channelRef.current?.send({
+      type: 'broadcast',
+      event: 'mp',
+      payload: {
+        type: 'REMATCH_ACCEPT',
+        player: myStateRef.current,
+        round: nextRound,
+        roundSeed: nextSeed,
+      },
+    });
+
+    startCountdown();
+  }, [roundNumber, myId, username, skin, startCountdown]);
+
+  const requestRematch = useCallback(() => {
+    setRematchRequested(true);
+    if (opponentWantsRematch) {
+      acceptRematch();
+    } else {
+      channelRef.current?.send({
+        type: 'broadcast',
+        event: 'mp',
+        payload: { type: 'REMATCH', player: myStateRef.current },
+      });
+    }
+  }, [opponentWantsRematch, acceptRematch]);
+
+  // ---------------------------------------------------------------------------
+  // Actions: Create & Join
   // ---------------------------------------------------------------------------
   const createRoom = useCallback(() => {
     const code = generateRoomCode();
     setRoomCode(code);
+    setRoundSeed(roomCodeToSeed(code));
+    setMyWins(0);
+    setOpponentWins(0);
+    setRoundNumber(1);
+    setRematchRequested(false);
+    setOpponentWantsRematch(false);
     myStateRef.current = makeInitialPlayer(myId, username, skin);
 
     if (channelRef.current) {
@@ -127,9 +201,7 @@ export function useMultiplayer(opts: UseMPOptions): UseMPReturn {
       }
 
       if (payload.type === 'READY') {
-        // Guest joined and sent READY
         setOpponentState(payload.player);
-        // Reply so guest knows host's real info and can also start countdown
         ch.send({
           type: 'broadcast',
           event: 'mp',
@@ -141,6 +213,27 @@ export function useMultiplayer(opts: UseMPOptions): UseMPReturn {
 
       if (payload.type === 'STATE') {
         setOpponentState((prev) => ({ ...(prev ?? payload.player), ...payload.player }));
+        return;
+      }
+
+      if (payload.type === 'REMATCH') {
+        setOpponentWantsRematch(true);
+        return;
+      }
+
+      if (payload.type === 'REMATCH_ACCEPT') {
+        const nextSeed = payload.roundSeed ?? Math.floor(Math.random() * 10000000);
+        const nextRound = payload.round ?? (roundNumber + 1);
+        setRoundNumber(nextRound);
+        setRoundSeed(nextSeed);
+        setRematchRequested(false);
+        setOpponentWantsRematch(false);
+
+        myStateRef.current = makeInitialPlayer(myId, username, skin);
+        setOpponentState((prev) => (prev ? { ...prev, y: 270, vy: 0, score: 0, alive: true, finished: false } : null));
+
+        startCountdown();
+        return;
       }
     });
 
@@ -149,11 +242,17 @@ export function useMultiplayer(opts: UseMPOptions): UseMPReturn {
         channelRef.current = ch;
       }
     });
-  }, [myId, username, skin, startCountdown]);
+  }, [myId, username, skin, startCountdown, roundNumber]);
 
   const joinRoom = useCallback((code: string) => {
     const upperCode = code.trim().toUpperCase();
     setRoomCode(upperCode);
+    setRoundSeed(roomCodeToSeed(upperCode));
+    setMyWins(0);
+    setOpponentWins(0);
+    setRoundNumber(1);
+    setRematchRequested(false);
+    setOpponentWantsRematch(false);
     myStateRef.current = makeInitialPlayer(myId, username, skin);
 
     if (channelRef.current) {
@@ -175,7 +274,6 @@ export function useMultiplayer(opts: UseMPOptions): UseMPReturn {
       }
 
       if (payload.type === 'HOST_ACK') {
-        // Received host acknowledgment: both are connected!
         if (joinAttemptTimerRef.current) {
           clearInterval(joinAttemptTimerRef.current);
           joinAttemptTimerRef.current = null;
@@ -187,13 +285,33 @@ export function useMultiplayer(opts: UseMPOptions): UseMPReturn {
 
       if (payload.type === 'STATE') {
         setOpponentState((prev) => ({ ...(prev ?? payload.player), ...payload.player }));
+        return;
+      }
+
+      if (payload.type === 'REMATCH') {
+        setOpponentWantsRematch(true);
+        return;
+      }
+
+      if (payload.type === 'REMATCH_ACCEPT') {
+        const nextSeed = payload.roundSeed ?? Math.floor(Math.random() * 10000000);
+        const nextRound = payload.round ?? (roundNumber + 1);
+        setRoundNumber(nextRound);
+        setRoundSeed(nextSeed);
+        setRematchRequested(false);
+        setOpponentWantsRematch(false);
+
+        myStateRef.current = makeInitialPlayer(myId, username, skin);
+        setOpponentState((prev) => (prev ? { ...prev, y: 270, vy: 0, score: 0, alive: true, finished: false } : null));
+
+        startCountdown();
+        return;
       }
     });
 
     ch.subscribe((status) => {
       if (status === 'SUBSCRIBED') {
         channelRef.current = ch;
-        // Broadcast READY to Host with retries until HOST_ACK is received
         let attempts = 0;
         const sendReady = () => {
           ch.send({
@@ -212,7 +330,7 @@ export function useMultiplayer(opts: UseMPOptions): UseMPReturn {
         joinAttemptTimerRef.current = setInterval(sendReady, 600);
       }
     });
-  }, [myId, username, skin, startCountdown]);
+  }, [myId, username, skin, startCountdown, roundNumber]);
 
   const broadcastFlap = useCallback(() => {
     broadcast({ type: 'FLAP', player: myStateRef.current });
@@ -239,6 +357,11 @@ export function useMultiplayer(opts: UseMPOptions): UseMPReturn {
     setPhase('LOBBY');
     setRoomCode('');
     setOpponentState(null);
+    setMyWins(0);
+    setOpponentWins(0);
+    setRoundNumber(1);
+    setRematchRequested(false);
+    setOpponentWantsRematch(false);
   }, []);
 
   // ---------------------------------------------------------------------------
@@ -271,10 +394,19 @@ export function useMultiplayer(opts: UseMPOptions): UseMPReturn {
     myState: myStateRef.current,
     opponentState,
     countdown,
+    myWins,
+    opponentWins,
+    roundNumber,
+    roundSeed,
+    rematchRequested,
+    opponentWantsRematch,
     createRoom,
     joinRoom,
     broadcastFlap,
     broadcastState,
+    recordRoundWin,
+    requestRematch,
+    acceptRematch,
     leave,
   };
 }

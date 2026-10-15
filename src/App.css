@@ -2333,7 +2333,32 @@ body {
 .mp-scorebar-player {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
+}
+
+.mp-round-badge {
+  background: rgba(245, 158, 11, 0.2);
+  border: 1px solid #f59e0b;
+  color: #fbbf24;
+  font-family: var(--font-arcade);
+  font-size: 0.55rem;
+  padding: 1px 5px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+.mp-scorebar-center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+}
+
+.mp-scorebar-round {
+  font-family: var(--font-arcade);
+  font-size: 0.5rem;
+  color: #94a3b8;
+  letter-spacing: 0.05em;
 }
 
 .mp-scorebar-player.mine { flex-direction: row; }
@@ -2377,10 +2402,12 @@ body {
   position: absolute;
   inset: 0;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
   background: rgba(0, 0, 0, 0.55);
   backdrop-filter: blur(2px);
+  gap: 4px;
 }
 
 .mp-countdown-num {
@@ -2389,6 +2416,13 @@ body {
   color: #facc15;
   text-shadow: 0 0 30px rgba(250, 204, 21, 0.7);
   animation: countdown-pop 0.85s ease-out forwards;
+}
+
+.mp-countdown-sub {
+  font-family: var(--font-arcade);
+  font-size: 0.7rem;
+  color: #e0e7ff;
+  letter-spacing: 0.1em;
 }
 
 @keyframes countdown-pop {
@@ -2416,12 +2450,18 @@ body {
 }
 
 /* --- Result card --- */
+.mp-result-backdrop {
+  z-index: 9500;
+  background: rgba(0, 0, 0, 0.88);
+  backdrop-filter: blur(6px);
+}
+
 .mp-result-card {
   background: linear-gradient(145deg, #1e1b4b 0%, #111827 100%);
   border: 2px solid #4338ca;
   border-radius: 20px;
-  padding: 28px 24px;
-  width: min(280px, 85vw);
+  padding: 24px 20px;
+  width: min(340px, 92vw);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -2433,7 +2473,64 @@ body {
 .mp-result-card.mp-win  { border-color: #f59e0b; box-shadow: 0 0 40px rgba(245, 158, 11, 0.3), 0 25px 60px rgba(0, 0, 0, 0.7); }
 .mp-result-card.mp-lose { border-color: #ef4444; box-shadow: 0 0 40px rgba(239, 68, 68, 0.2), 0 25px 60px rgba(0, 0, 0, 0.7); }
 
-.mp-result-emoji { font-size: 3rem; line-height: 1; margin-bottom: 4px; }
+.mp-result-series-box {
+  width: 100%;
+  background: rgba(15, 23, 42, 0.75);
+  border: 1px solid rgba(99, 102, 241, 0.35);
+  border-radius: 12px;
+  padding: 10px 14px;
+  margin-bottom: 6px;
+}
+
+.mp-result-series-title {
+  display: block;
+  font-family: var(--font-arcade);
+  font-size: 0.55rem;
+  color: #94a3b8;
+  letter-spacing: 0.1em;
+  margin-bottom: 6px;
+}
+
+.mp-result-series-scoreboard {
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  width: 100%;
+}
+
+.mp-series-side {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  max-width: 110px;
+}
+
+.mp-series-player-name {
+  font-family: var(--font-ui);
+  font-size: 0.75rem;
+  color: #cbd5e1;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100px;
+}
+
+.mp-series-wins-num {
+  font-family: var(--font-arcade);
+  font-size: 1.5rem;
+  color: #fbbf24;
+  line-height: 1;
+}
+
+.mp-series-colon {
+  font-family: var(--font-arcade);
+  font-size: 1.2rem;
+  color: #64748b;
+}
+
+.mp-result-emoji { font-size: 2.6rem; line-height: 1; margin-bottom: 2px; }
 
 .mp-result-label {
   font-family: var(--font-arcade);
@@ -2444,9 +2541,9 @@ body {
 
 .mp-result-sub {
   font-family: var(--font-ui);
-  font-size: 0.78rem;
+  font-size: 0.75rem;
   color: #94a3b8;
-  margin-bottom: 6px;
+  margin-bottom: 4px;
 }
 
 .mp-result-scores {
@@ -2457,6 +2554,43 @@ body {
   color: #64748b;
 }
 .mp-result-scores strong { color: #e0e7ff; }
+
+.mp-result-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  margin-top: 12px;
+}
+
+.mp-action-btn {
+  width: 100%;
+  padding: 12px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mp-leave-room-btn {
+  background: rgba(30, 41, 59, 0.8) !important;
+  color: #94a3b8 !important;
+  border-color: #475569 !important;
+  font-size: 11px !important;
+  padding: 10px !important;
+}
+
+.pulse-glow {
+  animation: pulse-border 1.5s infinite;
+}
+
+@keyframes pulse-border {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.6);
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgba(245, 158, 11, 0);
+  }
+}
 
 /* --- Bottom bars --- */
 .mp-leave-btn {

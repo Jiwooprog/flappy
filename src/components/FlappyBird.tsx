@@ -675,6 +675,15 @@ export const FlappyBird: React.FC = () => {
             onLeave={() => { mp.leave(); setShowMPLobby(false); }}
             countdown={mp.countdown}
             phase={mp.phase as 'COUNTDOWN' | 'PLAYING' | 'RESULT'}
+            myWins={mp.myWins}
+            opponentWins={mp.opponentWins}
+            roundNumber={mp.roundNumber}
+            roundSeed={mp.roundSeed}
+            rematchRequested={mp.rematchRequested}
+            opponentWantsRematch={mp.opponentWantsRematch}
+            onRequestRematch={mp.requestRematch}
+            onAcceptRematch={mp.acceptRematch}
+            onRecordRoundWin={mp.recordRoundWin}
           />
         </div>
       )}

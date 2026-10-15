@@ -23,8 +23,10 @@ export interface MPPlayerState {
 }
 
 export interface MPBroadcast {
-  type: 'STATE' | 'READY' | 'HOST_ACK' | 'FLAP' | 'LEAVE';
+  type: 'STATE' | 'READY' | 'HOST_ACK' | 'FLAP' | 'LEAVE' | 'REMATCH' | 'REMATCH_ACCEPT';
   player: MPPlayerState;
+  round?: number;
+  roundSeed?: number;
 }
 
 // ---------------------------------------------------------------------------
