@@ -89,7 +89,7 @@ export function useMultiplayer(opts: UseMPOptions): UseMPReturn {
     channelRef.current?.send({ type: 'broadcast', event: 'mp', payload: msg });
   }, []);
 
-  const startCountdown = useCallback(() => {
+  const startCountdown = useCallback((startAt?: number) => {
     if (countingDownRef.current) return;
     countingDownRef.current = true;
 
@@ -103,20 +103,25 @@ export function useMultiplayer(opts: UseMPOptions): UseMPReturn {
     }
 
     setPhase('COUNTDOWN');
-    let remaining = COUNTDOWN_SEC;
-    setCountdown(remaining);
+    const targetTime = startAt || (Date.now() + 3200);
 
-    countdownTimerRef.current = setInterval(() => {
-      remaining -= 1;
+    const updateCountdown = () => {
+      const diffMs = targetTime - Date.now();
+      const remaining = Math.max(0, Math.ceil(diffMs / 1000));
       setCountdown(remaining);
-      if (remaining <= 0) {
-        clearInterval(countdownTimerRef.current!);
-        countdownTimerRef.current = null;
+      if (diffMs <= 0) {
+        if (countdownTimerRef.current) {
+          clearInterval(countdownTimerRef.current);
+          countdownTimerRef.current = null;
+        }
         countingDownRef.current = false;
         setPhase('PLAYING');
         optsRef.current.onCountdownEnd();
       }
-    }, 1000);
+    };
+
+    updateCountdown();
+    countdownTimerRef.current = setInterval(updateCountdown, 80);
   }, []);
 
   const recordRoundWin = useCallback((winner: 'me' | 'opponent') => {
@@ -133,6 +138,7 @@ export function useMultiplayer(opts: UseMPOptions): UseMPReturn {
   const acceptRematch = useCallback(() => {
     const nextSeed = Math.floor(Math.random() * 10000000);
     const nextRound = roundNumber + 1;
+    const startAt = Date.now() + 3200;
     setRoundNumber(nextRound);
     setRoundSeed(nextSeed);
     setRematchRequested(false);
@@ -149,10 +155,11 @@ export function useMultiplayer(opts: UseMPOptions): UseMPReturn {
         player: myStateRef.current,
         round: nextRound,
         roundSeed: nextSeed,
+        startAt,
       },
     });
 
-    startCountdown();
+    startCountdown(startAt);
   }, [roundNumber, myId, username, skin, startCountdown]);
 
   const requestRematch = useCallback(() => {
@@ -201,13 +208,14 @@ export function useMultiplayer(opts: UseMPOptions): UseMPReturn {
       }
 
       if (payload.type === 'READY') {
+        const startAt = Date.now() + 3200;
         setOpponentState(payload.player);
         ch.send({
           type: 'broadcast',
           event: 'mp',
-          payload: { type: 'HOST_ACK', player: myStateRef.current },
+          payload: { type: 'HOST_ACK', player: myStateRef.current, startAt },
         });
-        startCountdown();
+        startCountdown(startAt);
         return;
       }
 
@@ -232,7 +240,7 @@ export function useMultiplayer(opts: UseMPOptions): UseMPReturn {
         myStateRef.current = makeInitialPlayer(myId, username, skin);
         setOpponentState((prev) => (prev ? { ...prev, y: 270, vy: 0, score: 0, alive: true, finished: false } : null));
 
-        startCountdown();
+        startCountdown(payload.startAt);
         return;
       }
     });
@@ -279,7 +287,7 @@ export function useMultiplayer(opts: UseMPOptions): UseMPReturn {
           joinAttemptTimerRef.current = null;
         }
         setOpponentState(payload.player);
-        startCountdown();
+        startCountdown(payload.startAt);
         return;
       }
 
@@ -304,7 +312,7 @@ export function useMultiplayer(opts: UseMPOptions): UseMPReturn {
         myStateRef.current = makeInitialPlayer(myId, username, skin);
         setOpponentState((prev) => (prev ? { ...prev, y: 270, vy: 0, score: 0, alive: true, finished: false } : null));
 
-        startCountdown();
+        startCountdown(payload.startAt);
         return;
       }
     });

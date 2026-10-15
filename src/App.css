@@ -2395,6 +2395,10 @@ body {
   border: 2px solid rgba(99, 102, 241, 0.35);
   box-shadow: 0 0 30px rgba(99, 102, 241, 0.2);
   cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  max-height: calc(100dvh - 120px);
+  aspect-ratio: 400 / 600;
 }
 
 /* --- Countdown overlay --- */

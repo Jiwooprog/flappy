@@ -20,6 +20,7 @@ export interface MPPlayerState {
   score: number;
   alive: boolean;
   finished: boolean; // died or won
+  scroll?: number;   // Pipe scroll offset for obstacle synchronization
 }
 
 export interface MPBroadcast {
@@ -27,6 +28,7 @@ export interface MPBroadcast {
   player: MPPlayerState;
   round?: number;
   roundSeed?: number;
+  startAt?: number;
 }
 
 // ---------------------------------------------------------------------------

@@ -160,10 +160,22 @@ export const MultiplayerGame: React.FC<MultiplayerGameProps> = ({
     birdRef.current = flapBird(birdRef.current, config.jumpForce);
     particlesRef.current.push(...createFlapParticles(birdRef.current, currentSkin.particleColor));
     sound.playFlap();
-    // Sync jump impulse immediately across network
-    onStateChange({ y: birdRef.current.y, vy: birdRef.current.vy });
+    // Sync jump impulse & scroll offset immediately across network
+    onStateChange({
+      y: birdRef.current.y,
+      vy: birdRef.current.vy,
+      scroll: scrollOffsetRef.current,
+    });
     onFlap();
   }, [config.jumpForce, currentSkin.particleColor, onFlap, onStateChange, phase]);
+
+  // Fast zero-delay touch/pointer handler for mobile devices
+  const handlePointerFlap = useCallback((e: React.PointerEvent | React.TouchEvent) => {
+    const target = e.target as HTMLElement;
+    if (target.closest('button') || target.closest('input') || target.closest('.mp-result-card')) return;
+    if (e.cancelable) e.preventDefault();
+    handleFlap();
+  }, [handleFlap]);
 
   // -----------------------------------------------------------------------
   // Keyboard & click (canvas area)
@@ -347,8 +359,12 @@ export const MultiplayerGame: React.FC<MultiplayerGameProps> = ({
           }
         }
 
-        // Sync Y position periodically
-        onStateChange({ y: birdRef.current.y, vy: birdRef.current.vy });
+        // Sync Y and scroll position periodically
+        onStateChange({
+          y: birdRef.current.y,
+          vy: birdRef.current.vy,
+          scroll: scrollOffsetRef.current,
+        });
       } else {
         // Dead: bird falls
         if (birdRef.current.y + birdRef.current.radius < CANVAS_HEIGHT - 90) {
@@ -400,7 +416,15 @@ export const MultiplayerGame: React.FC<MultiplayerGameProps> = ({
       const opp = opponentStateRef.current;
       if (opp) {
         const ghost = opponentGhostRef.current;
-        ghost.x = birdRef.current.x - 14;
+
+        // Synchronize X with exact obstacle scroll progress
+        let targetX = birdRef.current.x - 14;
+        if (opp.scroll !== undefined && scrollOffsetRef.current > 0) {
+          const scrollDiff = opp.scroll - scrollOffsetRef.current;
+          const clampedDiff = Math.max(-70, Math.min(70, scrollDiff));
+          targetX = birdRef.current.x + clampedDiff;
+        }
+        ghost.x += (targetX - ghost.x) * 0.25;
 
         if (opp.alive) {
           // Detect jump impulse to spawn flap particles behind opponent
@@ -415,12 +439,17 @@ export const MultiplayerGame: React.FC<MultiplayerGameProps> = ({
               wingFrame: ghost.wingFrame,
               wingTimer: ghost.wingTimer,
             }, oppSkinConfig.particleColor));
+            sound.playFlap();
+            ghost.vy = opp.vy;
           }
           ghost.prevVy = opp.vy;
 
-          // Smoothly interpolate towards opponent target Y
-          ghost.vy = opp.vy;
-          ghost.y += (opp.y - ghost.y) * 0.35;
+          // Predictive client-side arc between packets so bird flies smoothly without stuttering
+          ghost.vy += config.gravity * dt;
+          ghost.y += ghost.vy * dt;
+          // Smooth blend towards authoritative opp.y from network
+          ghost.y += (opp.y - ghost.y) * 0.32;
+
           ghost.wingTimer += dt * 10;
           ghost.wingFrame = Math.floor(ghost.wingTimer) % 4;
           ghost.rotation = Math.min(Math.PI / 2, Math.max(-Math.PI / 4, ghost.vy * 0.04));
@@ -462,18 +491,19 @@ export const MultiplayerGame: React.FC<MultiplayerGameProps> = ({
           const oppSkinKey = (opp.skin as BirdSkin) in SKINS ? (opp.skin as BirdSkin) : 'classic';
           renderer.renderBird(opponentBird, oppSkinKey);
 
-          // Name badge above opponent's ghost bird
+          // Name badge above opponent's ghost bird (stacked slightly higher to prevent overlapping with YOU badge)
           ctx.font = '600 9px sans-serif';
           ctx.textAlign = 'center';
           ctx.fillStyle = ghost.crashed ? 'rgba(239, 68, 68, 0.85)' : 'rgba(15, 23, 42, 0.75)';
+          const badgeY = ghost.y - 34;
           if (ctx.roundRect) {
-            ctx.roundRect(ghost.x - 26, ghost.y - 24, 52, 13, 3);
+            ctx.roundRect(ghost.x - 26, badgeY, 52, 13, 3);
           } else {
-            ctx.rect(ghost.x - 26, ghost.y - 24, 52, 13);
+            ctx.rect(ghost.x - 26, badgeY, 52, 13);
           }
           ctx.fill();
           ctx.fillStyle = ghost.crashed ? '#ffffff' : '#38bdf8';
-          ctx.fillText(ghost.crashed ? 'CRASHED' : (opp.username || 'Opponent'), ghost.x, ghost.y - 14);
+          ctx.fillText(ghost.crashed ? 'CRASHED' : (opp.username || 'Opponent'), ghost.x, badgeY + 10);
 
           ctx.restore();
         }
@@ -498,7 +528,12 @@ export const MultiplayerGame: React.FC<MultiplayerGameProps> = ({
   // Render
   // -----------------------------------------------------------------------
   return (
-    <div className="mp-game-wrapper">
+    <div
+      className="mp-game-wrapper"
+      onPointerDown={handlePointerFlap}
+      onTouchStart={handlePointerFlap}
+      style={{ touchAction: 'manipulation' }}
+    >
       {/* 1v1 Series Match Scorebar */}
       <div className="mp-scorebar">
         <div className="mp-scorebar-player mine">
@@ -520,7 +555,12 @@ export const MultiplayerGame: React.FC<MultiplayerGameProps> = ({
       </div>
 
       {/* Canvas */}
-      <div className="mp-canvas-wrap" onClick={handleFlap}>
+      <div
+        className="mp-canvas-wrap"
+        onClick={handleFlap}
+        onPointerDown={handlePointerFlap}
+        onTouchStart={handlePointerFlap}
+      >
         <canvas
           ref={canvasRef}
           width={CANVAS_WIDTH}
