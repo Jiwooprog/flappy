@@ -40,7 +40,7 @@ function makeInitialPlayer(id: string, username: string, skin: string): MPPlayer
 }
 
 export function useMultiplayer(opts: UseMPOptions): UseMPReturn {
-  const { username, skin, onCountdownEnd, onOpponentLeft } = opts;
+  const { username, skin } = opts;
 
   const [phase, setPhase] = useState<MPPhase>('LOBBY');
   const [roomCode, setRoomCode] = useState('');

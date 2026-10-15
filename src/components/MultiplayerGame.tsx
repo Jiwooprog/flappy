@@ -19,7 +19,6 @@ import {
   createImpactParticles,
   createScoreParticles,
   PIPE_WIDTH,
-  PIPE_LIP_HEIGHT,
 } from '../game/physics';
 import { GameRenderer } from '../game/renderer';
 import { sound } from '../game/audio';
