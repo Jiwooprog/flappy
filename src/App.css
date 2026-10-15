@@ -2100,3 +2100,388 @@ body {
   30%, 50%, 70% { transform: translateX(-6px); }
   40%, 60% { transform: translateX(6px); }
 }
+
+/* ==========================================================================
+   Multiplayer UI
+   ========================================================================== */
+
+/* --- Full-screen overlay that hosts the multiplayer game canvas --- */
+.mp-fullscreen-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 8000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.92);
+  backdrop-filter: blur(8px);
+}
+
+.mp-game-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: min(380px, 96vw);
+}
+
+/* --- Lobby card --- */
+.mp-lobby-backdrop {
+  z-index: 8500;
+  background: rgba(0, 0, 0, 0.82);
+  backdrop-filter: blur(6px);
+}
+
+.mp-lobby-card {
+  background: linear-gradient(145deg, #1e1b4b 0%, #111827 100%);
+  border: 2px solid #4338ca;
+  border-radius: 20px;
+  padding: 24px 22px;
+  width: min(340px, 90vw);
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  box-shadow:
+    0 0 0 1px rgba(99, 102, 241, 0.2),
+    0 25px 60px rgba(0, 0, 0, 0.7),
+    0 0 40px rgba(16, 185, 129, 0.15);
+}
+
+.mp-lobby-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.mp-back-btn {
+  background: rgba(99, 102, 241, 0.15);
+  border: 1px solid rgba(99, 102, 241, 0.3);
+  color: #a5b4fc;
+  border-radius: 8px;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.mp-back-btn:hover { background: rgba(99, 102, 241, 0.3); }
+
+.mp-lobby-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mp-lobby-title {
+  font-family: var(--font-arcade);
+  font-size: 0.65rem;
+  color: #e0e7ff;
+  letter-spacing: 0.06em;
+}
+
+.mp-lobby-sub {
+  font-family: var(--font-ui);
+  font-size: 0.8rem;
+  color: #94a3b8;
+  text-align: center;
+  margin-bottom: 18px;
+  line-height: 1.5;
+}
+
+.mp-lobby-choice {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+}
+
+.mp-choice-btn {
+  width: 100%;
+  margin-bottom: 18px;
+}
+
+.mp-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  margin-bottom: 14px;
+  font-size: 0.7rem;
+  color: #475569;
+}
+.mp-divider::before,
+.mp-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: rgba(99, 102, 241, 0.25);
+}
+
+.mp-join-row {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+}
+
+.mp-code-input {
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  font-size: 1rem;
+  text-align: center;
+}
+
+.mp-join-btn {
+  flex-shrink: 0;
+  padding: 10px 14px;
+}
+
+/* --- Waiting state --- */
+.mp-lobby-waiting {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+}
+
+.mp-room-code-box {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: rgba(15, 23, 42, 0.7);
+  border: 2px solid rgba(99, 102, 241, 0.4);
+  border-radius: 12px;
+  padding: 10px 18px;
+  margin-bottom: 18px;
+}
+
+.mp-room-code {
+  font-family: var(--font-arcade);
+  font-size: 1.15rem;
+  color: #a5b4fc;
+  letter-spacing: 0.3em;
+}
+
+.mp-copy-btn {
+  background: none;
+  border: none;
+  color: #64748b;
+  cursor: pointer;
+  padding: 2px;
+  transition: color 0.2s;
+}
+.mp-copy-btn:hover { color: #a5b4fc; }
+
+.mp-waiting-pulse {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.78rem;
+  color: #64748b;
+}
+
+.mp-waiting-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #6366f1;
+  animation: pulse-dot 1.4s ease-in-out infinite;
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.7); }
+}
+
+.mp-opponent-joined {
+  display: flex;
+  align-items: center;
+  font-size: 0.8rem;
+  color: #34d399;
+  font-weight: 600;
+}
+
+/* --- Score bar --- */
+.mp-scorebar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  border: 1px solid rgba(99, 102, 241, 0.3);
+  border-radius: 10px;
+  padding: 6px 14px;
+}
+
+.mp-scorebar-player {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mp-scorebar-player.mine { flex-direction: row; }
+.mp-scorebar-player.theirs { flex-direction: row-reverse; }
+
+.mp-scorebar-name {
+  font-family: var(--font-ui);
+  font-size: 0.7rem;
+  color: #94a3b8;
+  max-width: 80px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mp-scorebar-score {
+  font-family: var(--font-arcade);
+  font-size: 0.85rem;
+  color: #f8fafc;
+}
+
+.mp-scorebar-vs {
+  font-family: var(--font-arcade);
+  font-size: 0.55rem;
+  color: #f59e0b;
+  letter-spacing: 0.1em;
+}
+
+/* --- Canvas wrapper --- */
+.mp-canvas-wrap {
+  position: relative;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 2px solid rgba(99, 102, 241, 0.35);
+  box-shadow: 0 0 30px rgba(99, 102, 241, 0.2);
+  cursor: pointer;
+}
+
+/* --- Countdown overlay --- */
+.mp-countdown-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(2px);
+}
+
+.mp-countdown-num {
+  font-family: var(--font-arcade);
+  font-size: 5rem;
+  color: #facc15;
+  text-shadow: 0 0 30px rgba(250, 204, 21, 0.7);
+  animation: countdown-pop 0.85s ease-out forwards;
+}
+
+@keyframes countdown-pop {
+  0%   { transform: scale(1.6); opacity: 0; }
+  30%  { transform: scale(1.0); opacity: 1; }
+  80%  { transform: scale(1.0); opacity: 1; }
+  100% { transform: scale(0.7); opacity: 0; }
+}
+
+/* --- Opponent dead badge --- */
+.mp-opponent-dead-badge {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: rgba(239, 68, 68, 0.85);
+  color: #fff;
+  font-family: var(--font-ui);
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 20px;
+  display: flex;
+  align-items: center;
+  animation: animate-fade-in 0.3s ease;
+}
+
+/* --- Result card --- */
+.mp-result-card {
+  background: linear-gradient(145deg, #1e1b4b 0%, #111827 100%);
+  border: 2px solid #4338ca;
+  border-radius: 20px;
+  padding: 28px 24px;
+  width: min(280px, 85vw);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 6px;
+  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.7);
+}
+
+.mp-result-card.mp-win  { border-color: #f59e0b; box-shadow: 0 0 40px rgba(245, 158, 11, 0.3), 0 25px 60px rgba(0, 0, 0, 0.7); }
+.mp-result-card.mp-lose { border-color: #ef4444; box-shadow: 0 0 40px rgba(239, 68, 68, 0.2), 0 25px 60px rgba(0, 0, 0, 0.7); }
+
+.mp-result-emoji { font-size: 3rem; line-height: 1; margin-bottom: 4px; }
+
+.mp-result-label {
+  font-family: var(--font-arcade);
+  font-size: 0.8rem;
+  color: #f8fafc;
+  letter-spacing: 0.05em;
+}
+
+.mp-result-sub {
+  font-family: var(--font-ui);
+  font-size: 0.78rem;
+  color: #94a3b8;
+  margin-bottom: 6px;
+}
+
+.mp-result-scores {
+  display: flex;
+  gap: 16px;
+  font-family: var(--font-ui);
+  font-size: 0.75rem;
+  color: #64748b;
+}
+.mp-result-scores strong { color: #e0e7ff; }
+
+/* --- Bottom bars --- */
+.mp-leave-btn {
+  display: flex;
+  align-items: center;
+  background: none;
+  border: 1px solid rgba(99, 102, 241, 0.3);
+  color: #64748b;
+  font-family: var(--font-ui);
+  font-size: 0.72rem;
+  padding: 4px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: color 0.2s, border-color 0.2s;
+}
+.mp-leave-btn:hover { color: #a5b4fc; border-color: #6366f1; }
+
+.mp-alive-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-ui);
+  font-size: 0.68rem;
+  color: #475569;
+}
+
+.mp-you-dead {
+  color: #ef4444;
+  font-weight: 700;
+  margin-left: 8px;
+  letter-spacing: 0.05em;
+}
+
+/* --- VERSUS button glow in main menu --- */
+.mp-menu-btn {
+  border-color: rgba(16, 185, 129, 0.4) !important;
+  background: rgba(16, 185, 129, 0.08) !important;
+}
+.mp-menu-btn:hover {
+  border-color: #10b981 !important;
+  background: rgba(16, 185, 129, 0.18) !important;
+  box-shadow: 0 0 12px rgba(16, 185, 129, 0.25) !important;
+}

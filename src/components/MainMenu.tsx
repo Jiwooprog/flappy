@@ -7,6 +7,7 @@ import {
   Settings,
   Volume2,
   VolumeX,
+  Wifi,
 } from 'lucide-react';
 import type { Difficulty, BirdSkin } from '../game/types';
 import { DIFFICULTY_CONFIGS, SKINS } from '../game/constants';
@@ -21,6 +22,7 @@ interface MainMenuProps {
   onOpenHowToPlay: () => void;
   onOpenSettings: () => void;
   onOpenLeaderboard: () => void;
+  onOpenMultiplayer: () => void;
   bestScore: number;
   isMuted: boolean;
   onToggleMute: () => void;
@@ -37,6 +39,7 @@ export const MainMenu: React.FC<MainMenuProps> = ({
   onOpenHowToPlay,
   onOpenSettings,
   onOpenLeaderboard,
+  onOpenMultiplayer,
   bestScore,
   isMuted,
   onToggleMute,
@@ -196,6 +199,18 @@ export const MainMenu: React.FC<MainMenuProps> = ({
           >
             <Trophy size={17} className="text-amber-400 mb-1" />
             <span>RECORDS</span>
+          </button>
+
+          <button
+            type="button"
+            className="menu-sub-btn mp-menu-btn"
+            onClick={(e) => {
+              e.stopPropagation();
+              onOpenMultiplayer();
+            }}
+          >
+            <Wifi size={17} className="text-emerald-400 mb-1" />
+            <span>VERSUS</span>
           </button>
 
           <button

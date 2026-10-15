@@ -30,6 +30,9 @@ import { HowToPlayModal } from './HowToPlayModal';
 import { StatsModal } from './StatsModal';
 import { LeaderboardModal } from './LeaderboardModal';
 import { UsernameSetupModal } from './UsernameSetupModal';
+import { MultiplayerLobby } from './MultiplayerLobby';
+import { MultiplayerGame } from './MultiplayerGame';
+import { useMultiplayer } from '../hooks/useMultiplayer';
 import { getStoredUsername, hasSetUsername, submitLeaderboardScore } from '../game/leaderboard';
 
 export const FlappyBird: React.FC = () => {
@@ -56,6 +59,8 @@ export const FlappyBird: React.FC = () => {
   const [submittedRank, setSubmittedRank] = useState<number | null>(null);
   const [isNewBest, setIsNewBest] = useState<boolean>(false);
   const [showUsernameSetup, setShowUsernameSetup] = useState<boolean>(() => !hasSetUsername());
+  const [showMPLobby, setShowMPLobby] = useState<boolean>(false);
+  const [inMultiplayer, setInMultiplayer] = useState<boolean>(false);
 
   // Best score for current difficulty
   const [bestScore, setBestScore] = useState<number>(() => {
@@ -461,6 +466,14 @@ export const FlappyBird: React.FC = () => {
     setIsNewBest(false);
   };
 
+  // ---- Multiplayer hook ----
+  const mp = useMultiplayer({
+    username,
+    skin,
+    onCountdownEnd: () => { /* game loop in MultiplayerGame handles this */ },
+    onOpponentLeft: () => { setInMultiplayer(false); setShowMPLobby(false); },
+  });
+
   return (
     <div className="game-wrapper">
       {/* Arcade Cabinet Frame */}
@@ -511,6 +524,7 @@ export const FlappyBird: React.FC = () => {
                 onOpenHowToPlay={() => setIsHowToPlayOpen(true)}
                 onOpenSettings={() => setIsSettingsOpen(true)}
                 onOpenLeaderboard={() => setIsLeaderboardOpen(true)}
+                onOpenMultiplayer={() => setShowMPLobby(true)}
                 bestScore={bestScore}
                 isMuted={isMuted}
                 onToggleMute={handleToggleMute}
@@ -635,6 +649,35 @@ export const FlappyBird: React.FC = () => {
             setShowUsernameSetup(false);
           }}
         />
+      )}
+
+      {/* Multiplayer Lobby */}
+      {showMPLobby && !inMultiplayer && (
+        <MultiplayerLobby
+          roomCode={mp.roomCode}
+          opponentJoined={!!mp.opponentState}
+          onCreateRoom={() => mp.createRoom()}
+          onJoinRoom={(code) => mp.joinRoom(code)}
+          onBack={() => { mp.leave(); setShowMPLobby(false); }}
+        />
+      )}
+
+      {/* Multiplayer Game Screen */}
+      {(mp.phase === 'COUNTDOWN' || mp.phase === 'PLAYING') && (
+        <div className="mp-fullscreen-overlay">
+          <MultiplayerGame
+            roomCode={mp.roomCode}
+            myUsername={username}
+            skin={skin}
+            difficulty={difficulty}
+            opponentState={mp.opponentState}
+            onFlap={mp.broadcastFlap}
+            onStateChange={mp.broadcastState}
+            onLeave={() => { mp.leave(); setShowMPLobby(false); setInMultiplayer(false); }}
+            countdown={mp.countdown}
+            phase={mp.phase as 'COUNTDOWN' | 'PLAYING' | 'RESULT'}
+          />
+        </div>
       )}
     </div>
   );
