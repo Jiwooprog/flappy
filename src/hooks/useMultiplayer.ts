@@ -12,7 +12,7 @@ import type { MPPhase, MPPlayerState, MPBroadcast } from '../game/multiplayerTyp
 import { generateRoomCode, roomCodeToSeed } from '../game/multiplayerTypes';
 import type { BirdSkin } from '../game/types';
 
-const BROADCAST_HZ = 20;   // state syncs per second
+const BROADCAST_HZ = 30;   // state syncs per second (higher = smoother ghost)
 const COUNTDOWN_SEC = 3;
 
 interface UseMPOptions {
@@ -174,17 +174,21 @@ export function useMultiplayer(opts: UseMPOptions): UseMPReturn {
     myStateRef.current = makeInitialPlayer(myId, username, skin);
     setOpponentState((prev) => (prev ? { ...prev, y: 270, vy: 0, score: 0, alive: true, finished: false } : null));
 
-    channelRef.current?.send({
-      type: 'broadcast',
+    const acceptMsg = {
+      type: 'broadcast' as const,
       event: 'mp',
       payload: {
-        type: 'REMATCH_ACCEPT',
+        type: 'REMATCH_ACCEPT' as const,
         player: myStateRef.current,
         round: nextRound,
         roundSeed: nextSeed,
         startAt,
       },
-    });
+    };
+    channelRef.current?.send(acceptMsg);
+    setTimeout(() => {
+      channelRef.current?.send(acceptMsg);
+    }, 120);
 
     startCountdown(startAt);
   }, [myId, username, skin, startCountdown, stopRematchRetry]);
@@ -407,7 +411,11 @@ export function useMultiplayer(opts: UseMPOptions): UseMPReturn {
 
   const broadcastState = useCallback((patch: Partial<MPPlayerState>) => {
     myStateRef.current = { ...myStateRef.current, ...patch };
-  }, []);
+    // Immediately broadcast critical state changes (death, score) for responsive opponent display
+    if (patch.alive === false || patch.score !== undefined || patch.finished !== undefined) {
+      broadcast({ type: 'STATE', player: myStateRef.current });
+    }
+  }, [broadcast]);
 
   const leave = useCallback(() => {
     if (channelRef.current) {
@@ -438,7 +446,7 @@ export function useMultiplayer(opts: UseMPOptions): UseMPReturn {
   // Periodic state broadcast while playing
   // ---------------------------------------------------------------------------
   useEffect(() => {
-    if (phase !== 'PLAYING') return;
+    if (phase !== 'PLAYING' && phase !== 'COUNTDOWN' && phase !== 'RESULT') return;
     broadcastTimerRef.current = setInterval(() => {
       broadcast({ type: 'STATE', player: myStateRef.current });
     }, 1000 / BROADCAST_HZ);

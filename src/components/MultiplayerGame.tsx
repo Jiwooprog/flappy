@@ -102,6 +102,7 @@ export const MultiplayerGame: React.FC<MultiplayerGameProps> = ({
 
   // Game result ref to avoid simultaneous-death race conditions
   const gameResultRef = useRef<'WIN' | 'LOSE' | null>(null);
+  const resultTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Smooth client-side interpolated ghost bird state
   const opponentGhostRef = useRef({
@@ -123,10 +124,18 @@ export const MultiplayerGame: React.FC<MultiplayerGameProps> = ({
   const config = DIFFICULTY_CONFIGS[difficulty];
   const currentSkin = SKINS[skin];
 
+  // Cleanup result timer on unmount
+  useEffect(() => {
+    return () => {
+      if (resultTimerRef.current) clearTimeout(resultTimerRef.current);
+    };
+  }, []);
+
   // Re-seed RNG when roundSeed or roomCode changes
   useEffect(() => {
     const seed = roundSeed || roomCodeToSeed(roomCode);
     rngRef.current = seededRng(seed);
+    if (resultTimerRef.current) clearTimeout(resultTimerRef.current);
     setGameResult(null);
     gameResultRef.current = null;
     setIsAlive(true);
@@ -140,6 +149,10 @@ export const MultiplayerGame: React.FC<MultiplayerGameProps> = ({
   // Dismiss result modal as soon as a new countdown begins
   useEffect(() => {
     if (phase === 'COUNTDOWN') {
+      if (resultTimerRef.current) {
+        clearTimeout(resultTimerRef.current);
+        resultTimerRef.current = null;
+      }
       setGameResult(null);
       gameResultRef.current = null;
     }
@@ -150,13 +163,13 @@ export const MultiplayerGame: React.FC<MultiplayerGameProps> = ({
     if (opponentState && !opponentState.alive && aliveRef.current && phase === 'PLAYING' && !gameResultRef.current) {
       gameResultRef.current = 'WIN';
       onRecordRoundWin('me');
-      // 900ms delay so the player can witness the opponent crash into the obstacle
-      const timer = setTimeout(() => {
+      // 700ms delay so the player can witness the opponent crash into the obstacle
+      if (resultTimerRef.current) clearTimeout(resultTimerRef.current);
+      resultTimerRef.current = setTimeout(() => {
         setGameResult('WIN');
-      }, 900);
-      return () => clearTimeout(timer);
+      }, 700);
     }
-  }, [opponentState, phase, onRecordRoundWin]);
+  }, [opponentState?.alive, phase, onRecordRoundWin]);
 
   // -----------------------------------------------------------------------
   // Flap handler
@@ -215,6 +228,14 @@ export const MultiplayerGame: React.FC<MultiplayerGameProps> = ({
     birdRef.current = createInitialBird();
     if (phase === 'PLAYING') {
       birdRef.current = flapBird(birdRef.current, config.jumpForce); // initial flap
+      onStateChange({
+        y: birdRef.current.y,
+        vy: birdRef.current.vy,
+        scroll: 0,
+        alive: true,
+        finished: false,
+      });
+      onFlap();
     }
     pipesRef.current = [];
     particlesRef.current = [];
@@ -224,8 +245,13 @@ export const MultiplayerGame: React.FC<MultiplayerGameProps> = ({
     scoreRef.current = 0;
     setScore(0);
     setIsAlive(true);
+    if (resultTimerRef.current) clearTimeout(resultTimerRef.current);
     setGameResult(null);
     gameResultRef.current = null;
+    opponentGhostRef.current.x = birdRef.current.x - 14;
+    opponentGhostRef.current.y = 270;
+    opponentGhostRef.current.vy = phase === 'PLAYING' ? config.jumpForce : 0;
+    opponentGhostRef.current.prevVy = 0;
     opponentGhostRef.current.crashed = false;
     opponentGhostRef.current.alpha = 0.75;
     rngRef.current = seededRng(roundSeed || roomCodeToSeed(roomCode));
@@ -359,9 +385,16 @@ export const MultiplayerGame: React.FC<MultiplayerGameProps> = ({
           if (!gameResultRef.current) {
             gameResultRef.current = 'LOSE';
             onRecordRoundWin('opponent');
-            setTimeout(() => {
+            if (resultTimerRef.current) clearTimeout(resultTimerRef.current);
+            resultTimerRef.current = setTimeout(() => {
               setGameResult('LOSE');
-            }, 700);
+            }, 600);
+          } else if (gameResultRef.current === 'WIN') {
+            // Opponent crashed first (we won), and now our bird also crashed — show WIN result
+            if (resultTimerRef.current) clearTimeout(resultTimerRef.current);
+            resultTimerRef.current = setTimeout(() => {
+              setGameResult('WIN');
+            }, 300);
           }
         }
 
@@ -435,6 +468,7 @@ export const MultiplayerGame: React.FC<MultiplayerGameProps> = ({
         if (opp.alive) {
           // Detect jump impulse to spawn flap particles behind opponent
           if (opp.vy <= -180 && ghost.prevVy > -180) {
+            ghost.vy = opp.vy; // Instant upward impulse on flap detection
             const oppSkinConfig = SKINS[(opp.skin as BirdSkin) in SKINS ? (opp.skin as BirdSkin) : 'classic'];
             particlesRef.current.push(...createFlapParticles({
               x: ghost.x,
@@ -446,15 +480,14 @@ export const MultiplayerGame: React.FC<MultiplayerGameProps> = ({
               wingTimer: ghost.wingTimer,
             }, oppSkinConfig.particleColor));
             sound.playFlap();
-            ghost.vy = opp.vy;
           }
           ghost.prevVy = opp.vy;
 
-          // Predictive client-side arc between packets so bird flies smoothly without stuttering
+          // Parabolic prediction between packets with responsive network blend
+          ghost.vy += (opp.vy - ghost.vy) * 0.35;
           ghost.vy += config.gravity * dt;
           ghost.y += ghost.vy * dt;
-          // Smooth blend towards authoritative opp.y from network
-          ghost.y += (opp.y - ghost.y) * 0.32;
+          ghost.y += (opp.y - ghost.y) * 0.45;
 
           ghost.wingTimer += dt * 10;
           ghost.wingFrame = Math.floor(ghost.wingTimer) % 4;
@@ -626,6 +659,12 @@ export const MultiplayerGame: React.FC<MultiplayerGameProps> = ({
 
               {/* Rematch Actions */}
               <div className="mp-result-actions">
+                {opponentWantsRematch && !rematchRequested && (
+                  <div className="mp-rematch-challenge-notice animate-pulse">
+                    ⚡ {opponentState?.username ?? 'Opponent'} is ready for Round {roundNumber + 1}!
+                  </div>
+                )}
+
                 {rematchRequested ? (
                   <button
                     type="button"
@@ -633,7 +672,7 @@ export const MultiplayerGame: React.FC<MultiplayerGameProps> = ({
                     disabled
                   >
                     <Loader2 size={16} className="animate-spin mr-2" />
-                    {opponentWantsRematch ? 'STARTING...' : 'WAITING FOR OPPONENT...'}
+                    {opponentWantsRematch ? `STARTING ROUND ${roundNumber + 1}...` : 'WAITING FOR OPPONENT...'}
                   </button>
                 ) : (
                   <button
@@ -642,7 +681,9 @@ export const MultiplayerGame: React.FC<MultiplayerGameProps> = ({
                     onClick={onRequestRematch}
                   >
                     <RefreshCw size={18} className="mr-2" />
-                    {opponentWantsRematch ? 'PLAY AGAIN!' : `PLAY AGAIN (ROUND ${roundNumber + 1})`}
+                    {opponentWantsRematch
+                      ? `ACCEPT REMATCH (ROUND ${roundNumber + 1})`
+                      : `PLAY AGAIN (ROUND ${roundNumber + 1})`}
                   </button>
                 )}
 

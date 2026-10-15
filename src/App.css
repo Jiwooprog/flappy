@@ -2583,6 +2583,20 @@ body {
   padding: 10px !important;
 }
 
+.mp-rematch-challenge-notice {
+  font-family: var(--font-arcade);
+  font-size: 0.65rem;
+  color: #fbbf24;
+  background: rgba(245, 158, 11, 0.15);
+  border: 1px solid rgba(245, 158, 11, 0.4);
+  border-radius: 8px;
+  padding: 8px 12px;
+  text-align: center;
+  line-height: 1.4;
+  text-shadow: 0 0 8px rgba(245, 158, 11, 0.5);
+  box-shadow: 0 0 12px rgba(245, 158, 11, 0.2);
+}
+
 .pulse-glow {
   animation: pulse-border 1.5s infinite;
 }
