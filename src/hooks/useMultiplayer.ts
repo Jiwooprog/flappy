@@ -79,6 +79,10 @@ export function useMultiplayer(opts: UseMPOptions): UseMPReturn {
   const countdownTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const joinAttemptTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const countingDownRef = useRef(false);
+  const rematchRequestedRef = useRef(false);
+  const opponentWantsRematchRef = useRef(false);
+  const roundNumberRef = useRef(roundNumber);
+  roundNumberRef.current = roundNumber;
   const optsRef = useRef(opts);
   optsRef.current = opts;
 
@@ -137,12 +141,15 @@ export function useMultiplayer(opts: UseMPOptions): UseMPReturn {
   // ---------------------------------------------------------------------------
   const acceptRematch = useCallback(() => {
     const nextSeed = Math.floor(Math.random() * 10000000);
-    const nextRound = roundNumber + 1;
+    const nextRound = roundNumberRef.current + 1;
     const startAt = Date.now() + 3200;
-    setRoundNumber(nextRound);
-    setRoundSeed(nextSeed);
+
+    rematchRequestedRef.current = false;
+    opponentWantsRematchRef.current = false;
     setRematchRequested(false);
     setOpponentWantsRematch(false);
+    setRoundNumber(nextRound);
+    setRoundSeed(nextSeed);
 
     myStateRef.current = makeInitialPlayer(myId, username, skin);
     setOpponentState((prev) => (prev ? { ...prev, y: 270, vy: 0, score: 0, alive: true, finished: false } : null));
@@ -160,11 +167,15 @@ export function useMultiplayer(opts: UseMPOptions): UseMPReturn {
     });
 
     startCountdown(startAt);
-  }, [roundNumber, myId, username, skin, startCountdown]);
+  }, [myId, username, skin, startCountdown]);
+
+  const acceptRematchRef = useRef(acceptRematch);
+  acceptRematchRef.current = acceptRematch;
 
   const requestRematch = useCallback(() => {
+    rematchRequestedRef.current = true;
     setRematchRequested(true);
-    if (opponentWantsRematch) {
+    if (opponentWantsRematchRef.current) {
       acceptRematch();
     } else {
       channelRef.current?.send({
@@ -173,7 +184,7 @@ export function useMultiplayer(opts: UseMPOptions): UseMPReturn {
         payload: { type: 'REMATCH', player: myStateRef.current },
       });
     }
-  }, [opponentWantsRematch, acceptRematch]);
+  }, [acceptRematch]);
 
   // ---------------------------------------------------------------------------
   // Actions: Create & Join
@@ -185,6 +196,8 @@ export function useMultiplayer(opts: UseMPOptions): UseMPReturn {
     setMyWins(0);
     setOpponentWins(0);
     setRoundNumber(1);
+    rematchRequestedRef.current = false;
+    opponentWantsRematchRef.current = false;
     setRematchRequested(false);
     setOpponentWantsRematch(false);
     myStateRef.current = makeInitialPlayer(myId, username, skin);
@@ -220,22 +233,31 @@ export function useMultiplayer(opts: UseMPOptions): UseMPReturn {
       }
 
       if (payload.type === 'STATE' || payload.type === 'FLAP') {
+        if (countingDownRef.current && !payload.player.alive) {
+          return; // Ignore stale dead packets during countdown
+        }
         setOpponentState((prev) => ({ ...(prev ?? payload.player), ...payload.player }));
         return;
       }
 
       if (payload.type === 'REMATCH') {
+        opponentWantsRematchRef.current = true;
         setOpponentWantsRematch(true);
+        if (rematchRequestedRef.current) {
+          acceptRematchRef.current();
+        }
         return;
       }
 
       if (payload.type === 'REMATCH_ACCEPT') {
         const nextSeed = payload.roundSeed ?? Math.floor(Math.random() * 10000000);
-        const nextRound = payload.round ?? (roundNumber + 1);
-        setRoundNumber(nextRound);
-        setRoundSeed(nextSeed);
+        const nextRound = payload.round ?? (roundNumberRef.current + 1);
+        rematchRequestedRef.current = false;
+        opponentWantsRematchRef.current = false;
         setRematchRequested(false);
         setOpponentWantsRematch(false);
+        setRoundNumber(nextRound);
+        setRoundSeed(nextSeed);
 
         myStateRef.current = makeInitialPlayer(myId, username, skin);
         setOpponentState((prev) => (prev ? { ...prev, y: 270, vy: 0, score: 0, alive: true, finished: false } : null));
@@ -250,7 +272,7 @@ export function useMultiplayer(opts: UseMPOptions): UseMPReturn {
         channelRef.current = ch;
       }
     });
-  }, [myId, username, skin, startCountdown, roundNumber]);
+  }, [myId, username, skin, startCountdown]);
 
   const joinRoom = useCallback((code: string) => {
     const upperCode = code.trim().toUpperCase();
@@ -259,6 +281,8 @@ export function useMultiplayer(opts: UseMPOptions): UseMPReturn {
     setMyWins(0);
     setOpponentWins(0);
     setRoundNumber(1);
+    rematchRequestedRef.current = false;
+    opponentWantsRematchRef.current = false;
     setRematchRequested(false);
     setOpponentWantsRematch(false);
     myStateRef.current = makeInitialPlayer(myId, username, skin);
@@ -292,22 +316,31 @@ export function useMultiplayer(opts: UseMPOptions): UseMPReturn {
       }
 
       if (payload.type === 'STATE' || payload.type === 'FLAP') {
+        if (countingDownRef.current && !payload.player.alive) {
+          return; // Ignore stale dead packets during countdown
+        }
         setOpponentState((prev) => ({ ...(prev ?? payload.player), ...payload.player }));
         return;
       }
 
       if (payload.type === 'REMATCH') {
+        opponentWantsRematchRef.current = true;
         setOpponentWantsRematch(true);
+        if (rematchRequestedRef.current) {
+          acceptRematchRef.current();
+        }
         return;
       }
 
       if (payload.type === 'REMATCH_ACCEPT') {
         const nextSeed = payload.roundSeed ?? Math.floor(Math.random() * 10000000);
-        const nextRound = payload.round ?? (roundNumber + 1);
-        setRoundNumber(nextRound);
-        setRoundSeed(nextSeed);
+        const nextRound = payload.round ?? (roundNumberRef.current + 1);
+        rematchRequestedRef.current = false;
+        opponentWantsRematchRef.current = false;
         setRematchRequested(false);
         setOpponentWantsRematch(false);
+        setRoundNumber(nextRound);
+        setRoundSeed(nextSeed);
 
         myStateRef.current = makeInitialPlayer(myId, username, skin);
         setOpponentState((prev) => (prev ? { ...prev, y: 270, vy: 0, score: 0, alive: true, finished: false } : null));

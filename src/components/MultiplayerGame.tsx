@@ -139,6 +139,14 @@ export const MultiplayerGame: React.FC<MultiplayerGameProps> = ({
     opponentGhostRef.current.alpha = 0.75;
   }, [roomCode, roundSeed]);
 
+  // Dismiss result modal as soon as a new countdown begins
+  useEffect(() => {
+    if (phase === 'COUNTDOWN') {
+      setGameResult(null);
+      gameResultRef.current = null;
+    }
+  }, [phase]);
+
   // Check if opponent died → we win (if we're still alive)
   useEffect(() => {
     if (opponentState && !opponentState.alive && aliveRef.current && phase === 'PLAYING' && !gameResultRef.current) {
@@ -624,7 +632,11 @@ export const MultiplayerGame: React.FC<MultiplayerGameProps> = ({
                   <button
                     type="button"
                     className="arcade-btn primary-btn mp-action-btn pulse-glow"
-                    onClick={onAcceptRematch}
+                    onClick={() => {
+                      setGameResult(null);
+                      gameResultRef.current = null;
+                      onAcceptRematch();
+                    }}
                   >
                     <RefreshCw size={18} className="mr-2" />
                     ACCEPT REMATCH!
