@@ -109,7 +109,7 @@ export function useMultiplayer(opts: UseMPOptions): UseMPReturn {
     myStateRef.current = makeInitialPlayer(myId, username, skin);
 
     if (channelRef.current) {
-      channelRef.current.unsubscribe();
+      supabase.removeChannel(channelRef.current);
       channelRef.current = null;
     }
 
@@ -157,7 +157,7 @@ export function useMultiplayer(opts: UseMPOptions): UseMPReturn {
     myStateRef.current = makeInitialPlayer(myId, username, skin);
 
     if (channelRef.current) {
-      channelRef.current.unsubscribe();
+      supabase.removeChannel(channelRef.current);
       channelRef.current = null;
     }
 
@@ -229,7 +229,7 @@ export function useMultiplayer(opts: UseMPOptions): UseMPReturn {
         event: 'mp',
         payload: { type: 'LEAVE', player: myStateRef.current },
       });
-      channelRef.current.unsubscribe();
+      supabase.removeChannel(channelRef.current);
       channelRef.current = null;
     }
     if (broadcastTimerRef.current) clearInterval(broadcastTimerRef.current);
@@ -257,7 +257,7 @@ export function useMultiplayer(opts: UseMPOptions): UseMPReturn {
   // ---------------------------------------------------------------------------
   useEffect(() => {
     return () => {
-      channelRef.current?.unsubscribe();
+      if (channelRef.current) supabase.removeChannel(channelRef.current);
       if (broadcastTimerRef.current) clearInterval(broadcastTimerRef.current);
       if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
       if (joinAttemptTimerRef.current) clearInterval(joinAttemptTimerRef.current);
