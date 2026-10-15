@@ -332,11 +332,9 @@ export function useMultiplayer(opts: UseMPOptions): UseMPReturn {
       }
 
       if (payload.type === 'REMATCH') {
+        // Host wants a rematch — update UI; joiner just waits for REMATCH_ACCEPT from host
         opponentWantsRematchRef.current = true;
         setOpponentWantsRematch(true);
-        if (rematchRequestedRef.current) {
-          acceptRematchRef.current();
-        }
         return;
       }
 
