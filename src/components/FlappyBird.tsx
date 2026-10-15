@@ -29,7 +29,8 @@ import { MainMenu } from './MainMenu';
 import { HowToPlayModal } from './HowToPlayModal';
 import { StatsModal } from './StatsModal';
 import { LeaderboardModal } from './LeaderboardModal';
-import { getStoredUsername, submitLeaderboardScore } from '../game/leaderboard';
+import { UsernameSetupModal } from './UsernameSetupModal';
+import { getStoredUsername, hasSetUsername, submitLeaderboardScore } from '../game/leaderboard';
 
 export const FlappyBird: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -54,6 +55,7 @@ export const FlappyBird: React.FC = () => {
   const [isLeaderboardOpen, setIsLeaderboardOpen] = useState<boolean>(false);
   const [submittedRank, setSubmittedRank] = useState<number | null>(null);
   const [isNewBest, setIsNewBest] = useState<boolean>(false);
+  const [showUsernameSetup, setShowUsernameSetup] = useState<boolean>(() => !hasSetUsername());
 
   // Best score for current difficulty
   const [bestScore, setBestScore] = useState<number>(() => {
@@ -620,6 +622,16 @@ export const FlappyBird: React.FC = () => {
         onUpdateUsername={setUsername}
         defaultFilter={difficulty}
       />
+
+      {/* First-time Gamer Tag Setup */}
+      {showUsernameSetup && (
+        <UsernameSetupModal
+          onComplete={(name) => {
+            setUsername(name);
+            setShowUsernameSetup(false);
+          }}
+        />
+      )}
     </div>
   );
 };

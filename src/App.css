@@ -1945,3 +1945,158 @@ body {
     grid-column: 1 / -1;
   }
 }
+
+/* ==========================================================================
+   Username Setup Modal (First-time Gamer Tag)
+   ========================================================================== */
+.username-setup-backdrop {
+  z-index: 9999;
+  background: rgba(0, 0, 0, 0.82);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+.username-setup-card {
+  background: linear-gradient(145deg, #1e1b4b 0%, #111827 100%);
+  border: 2px solid #4338ca;
+  border-radius: 20px;
+  padding: 32px 28px 24px;
+  width: min(340px, 90vw);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+  box-shadow:
+    0 0 0 1px rgba(99, 102, 241, 0.2),
+    0 25px 60px rgba(0, 0, 0, 0.7),
+    0 0 40px rgba(99, 102, 241, 0.2);
+  position: relative;
+}
+
+.username-setup-icon {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(56, 189, 248, 0.15) 0%, transparent 70%);
+  border: 2px solid rgba(56, 189, 248, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 16px;
+  animation: pulse-ring 2.5s ease-in-out infinite;
+}
+
+@keyframes pulse-ring {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(56, 189, 248, 0.35); }
+  50%       { box-shadow: 0 0 0 8px rgba(56, 189, 248, 0); }
+}
+
+.username-setup-title {
+  font-family: var(--font-arcade);
+  font-size: 0.7rem;
+  color: #e0e7ff;
+  letter-spacing: 0.05em;
+  text-align: center;
+  margin-bottom: 8px;
+  line-height: 1.6;
+}
+
+.username-setup-sub {
+  font-family: var(--font-ui);
+  font-size: 0.78rem;
+  color: #94a3b8;
+  text-align: center;
+  margin-bottom: 22px;
+  line-height: 1.5;
+}
+
+.username-setup-input-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  margin-bottom: 4px;
+}
+
+.username-setup-input {
+  flex: 1;
+  background: rgba(15, 23, 42, 0.8);
+  border: 2px solid #312e81;
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-family: var(--font-ui);
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #f8fafc;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.username-setup-input::placeholder {
+  color: #475569;
+  font-weight: 400;
+}
+
+.username-setup-input:focus {
+  border-color: #6366f1;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
+}
+
+.username-suggest-btn {
+  flex-shrink: 0;
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  background: rgba(99, 102, 241, 0.15);
+  border: 2px solid rgba(99, 102, 241, 0.4);
+  color: #a5b4fc;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s, border-color 0.2s, transform 0.15s;
+}
+
+.username-suggest-btn:hover {
+  background: rgba(99, 102, 241, 0.3);
+  border-color: #6366f1;
+  transform: scale(1.08) rotate(15deg);
+}
+
+.username-char-count {
+  font-family: var(--font-ui);
+  font-size: 0.7rem;
+  color: #475569;
+  align-self: flex-end;
+  margin-bottom: 20px;
+}
+
+.username-confirm-btn {
+  width: 100%;
+  font-size: 0.8rem;
+  padding: 12px 16px;
+  margin-bottom: 14px;
+  letter-spacing: 0.08em;
+}
+
+.username-setup-hint {
+  font-family: var(--font-ui);
+  font-size: 0.68rem;
+  color: #475569;
+  text-align: center;
+  line-height: 1.4;
+}
+
+/* Shake animation for empty submission */
+.username-shake {
+  animation: shake-card 0.45s cubic-bezier(.36,.07,.19,.97) both;
+}
+
+@keyframes shake-card {
+  10%, 90% { transform: translateX(-3px); }
+  20%, 80% { transform: translateX(5px); }
+  30%, 50%, 70% { transform: translateX(-6px); }
+  40%, 60% { transform: translateX(6px); }
+}

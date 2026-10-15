@@ -1,7 +1,18 @@
 import type { LeaderboardEntry, Difficulty, BirdSkin } from './types';
 
 const USERNAME_STORAGE_KEY = 'flappy_username';
+const USERNAME_SET_KEY = 'flappy_username_set';
 const LOCAL_LEADERBOARD_KEY = 'flappy_local_leaderboard';
+
+/** Returns true only if the user has explicitly set a gamer tag. */
+export function hasSetUsername(): boolean {
+  return localStorage.getItem(USERNAME_SET_KEY) === 'true';
+}
+
+/** Marks that the user has explicitly confirmed their gamer tag. */
+export function markUsernameSet(): void {
+  localStorage.setItem(USERNAME_SET_KEY, 'true');
+}
 
 export function getStoredUsername(): string {
   const saved = localStorage.getItem(USERNAME_STORAGE_KEY);
@@ -19,6 +30,7 @@ export function getStoredUsername(): string {
 export function saveUsername(username: string): string {
   const cleaned = username.trim().substring(0, 16) || getStoredUsername();
   localStorage.setItem(USERNAME_STORAGE_KEY, cleaned);
+  markUsernameSet();
   return cleaned;
 }
 
