@@ -78,6 +78,7 @@ export function useMultiplayer(opts: UseMPOptions): UseMPReturn {
   const broadcastTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const countdownTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const joinAttemptTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const rematchRetryRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const countingDownRef = useRef(false);
   const rematchRequestedRef = useRef(false);
   const opponentWantsRematchRef = useRef(false);
@@ -141,6 +142,14 @@ export function useMultiplayer(opts: UseMPOptions): UseMPReturn {
   // Rematch actions
   // ---------------------------------------------------------------------------
 
+  /** Stop any pending REMATCH retry loop */
+  const stopRematchRetry = useCallback(() => {
+    if (rematchRetryRef.current) {
+      clearInterval(rematchRetryRef.current);
+      rematchRetryRef.current = null;
+    }
+  }, []);
+
   /**
    * Only ever called by the HOST. Generates the next round seed, updates
    * local state, broadcasts REMATCH_ACCEPT, and starts the countdown.
@@ -148,6 +157,8 @@ export function useMultiplayer(opts: UseMPOptions): UseMPReturn {
    */
   const acceptRematch = useCallback(() => {
     if (!isHostRef.current) return; // safety guard — only host is authority
+
+    stopRematchRetry(); // stop any pending host REMATCH retry
 
     const nextSeed = Math.floor(Math.random() * 10000000);
     const nextRound = roundNumberRef.current + 1;
@@ -176,7 +187,7 @@ export function useMultiplayer(opts: UseMPOptions): UseMPReturn {
     });
 
     startCountdown(startAt);
-  }, [myId, username, skin, startCountdown]);
+  }, [myId, username, skin, startCountdown, stopRematchRetry]);
 
   const acceptRematchRef = useRef(acceptRematch);
   acceptRematchRef.current = acceptRematch;
@@ -186,25 +197,35 @@ export function useMultiplayer(opts: UseMPOptions): UseMPReturn {
     setRematchRequested(true);
 
     if (isHostRef.current) {
-      // HOST: if joiner already signalled, start immediately; else signal and wait
+      // HOST: if joiner already signalled, start immediately; else signal & retry until joiner responds
       if (opponentWantsRematchRef.current) {
         acceptRematch();
       } else {
+        const sendRematch = () => {
+          channelRef.current?.send({
+            type: 'broadcast',
+            event: 'mp',
+            payload: { type: 'REMATCH', player: myStateRef.current },
+          });
+        };
+        sendRematch();
+        if (rematchRetryRef.current) clearInterval(rematchRetryRef.current);
+        rematchRetryRef.current = setInterval(sendRematch, 700);
+      }
+    } else {
+      // JOINER: broadcast REMATCH and retry until REMATCH_ACCEPT is received
+      const sendRematch = () => {
         channelRef.current?.send({
           type: 'broadcast',
           event: 'mp',
           payload: { type: 'REMATCH', player: myStateRef.current },
         });
-      }
-    } else {
-      // JOINER: always just broadcast REMATCH and wait for host's REMATCH_ACCEPT
-      channelRef.current?.send({
-        type: 'broadcast',
-        event: 'mp',
-        payload: { type: 'REMATCH', player: myStateRef.current },
-      });
+      };
+      sendRematch();
+      if (rematchRetryRef.current) clearInterval(rematchRetryRef.current);
+      rematchRetryRef.current = setInterval(sendRematch, 700);
     }
-  }, [acceptRematch]);
+  }, [acceptRematch, stopRematchRetry]);
 
   // ---------------------------------------------------------------------------
   // Actions: Create & Join
@@ -339,6 +360,7 @@ export function useMultiplayer(opts: UseMPOptions): UseMPReturn {
       }
 
       if (payload.type === 'REMATCH_ACCEPT') {
+        stopRematchRetry(); // joiner got the ack — stop retrying
         const nextSeed = payload.roundSeed ?? Math.floor(Math.random() * 10000000);
         const nextRound = payload.round ?? (roundNumberRef.current + 1);
         rematchRequestedRef.current = false;
@@ -400,6 +422,7 @@ export function useMultiplayer(opts: UseMPOptions): UseMPReturn {
     if (broadcastTimerRef.current) clearInterval(broadcastTimerRef.current);
     if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
     if (joinAttemptTimerRef.current) clearInterval(joinAttemptTimerRef.current);
+    if (rematchRetryRef.current) clearInterval(rematchRetryRef.current);
     countingDownRef.current = false;
     setPhase('LOBBY');
     setRoomCode('');
