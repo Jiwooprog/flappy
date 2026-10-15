@@ -23,7 +23,7 @@ export interface MPPlayerState {
 }
 
 export interface MPBroadcast {
-  type: 'STATE' | 'READY' | 'FLAP' | 'LEAVE';
+  type: 'STATE' | 'READY' | 'HOST_ACK' | 'FLAP' | 'LEAVE';
   player: MPPlayerState;
 }
 

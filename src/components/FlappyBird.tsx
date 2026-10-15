@@ -60,7 +60,6 @@ export const FlappyBird: React.FC = () => {
   const [isNewBest, setIsNewBest] = useState<boolean>(false);
   const [showUsernameSetup, setShowUsernameSetup] = useState<boolean>(() => !hasSetUsername());
   const [showMPLobby, setShowMPLobby] = useState<boolean>(false);
-  const [inMultiplayer, setInMultiplayer] = useState<boolean>(false);
 
   // Best score for current difficulty
   const [bestScore, setBestScore] = useState<number>(() => {
@@ -471,7 +470,7 @@ export const FlappyBird: React.FC = () => {
     username,
     skin,
     onCountdownEnd: () => { /* game loop in MultiplayerGame handles this */ },
-    onOpponentLeft: () => { setInMultiplayer(false); setShowMPLobby(false); },
+    onOpponentLeft: () => { setShowMPLobby(false); },
   });
 
   return (
@@ -652,7 +651,7 @@ export const FlappyBird: React.FC = () => {
       )}
 
       {/* Multiplayer Lobby */}
-      {showMPLobby && !inMultiplayer && (
+      {showMPLobby && mp.phase === 'LOBBY' && (
         <MultiplayerLobby
           roomCode={mp.roomCode}
           opponentJoined={!!mp.opponentState}
@@ -663,7 +662,7 @@ export const FlappyBird: React.FC = () => {
       )}
 
       {/* Multiplayer Game Screen */}
-      {(mp.phase === 'COUNTDOWN' || mp.phase === 'PLAYING') && (
+      {showMPLobby && mp.phase !== 'LOBBY' && (
         <div className="mp-fullscreen-overlay">
           <MultiplayerGame
             roomCode={mp.roomCode}
@@ -673,7 +672,7 @@ export const FlappyBird: React.FC = () => {
             opponentState={mp.opponentState}
             onFlap={mp.broadcastFlap}
             onStateChange={mp.broadcastState}
-            onLeave={() => { mp.leave(); setShowMPLobby(false); setInMultiplayer(false); }}
+            onLeave={() => { mp.leave(); setShowMPLobby(false); }}
             countdown={mp.countdown}
             phase={mp.phase as 'COUNTDOWN' | 'PLAYING' | 'RESULT'}
           />
