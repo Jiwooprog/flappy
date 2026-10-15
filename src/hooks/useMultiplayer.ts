@@ -12,7 +12,7 @@ import type { MPPhase, MPPlayerState, MPBroadcast } from '../game/multiplayerTyp
 import { generateRoomCode, roomCodeToSeed } from '../game/multiplayerTypes';
 import type { BirdSkin } from '../game/types';
 
-const BROADCAST_HZ = 15;   // state syncs per second
+const BROADCAST_HZ = 20;   // state syncs per second
 const COUNTDOWN_SEC = 3;
 
 interface UseMPOptions {
@@ -211,7 +211,7 @@ export function useMultiplayer(opts: UseMPOptions): UseMPReturn {
         return;
       }
 
-      if (payload.type === 'STATE') {
+      if (payload.type === 'STATE' || payload.type === 'FLAP') {
         setOpponentState((prev) => ({ ...(prev ?? payload.player), ...payload.player }));
         return;
       }
@@ -283,7 +283,7 @@ export function useMultiplayer(opts: UseMPOptions): UseMPReturn {
         return;
       }
 
-      if (payload.type === 'STATE') {
+      if (payload.type === 'STATE' || payload.type === 'FLAP') {
         setOpponentState((prev) => ({ ...(prev ?? payload.player), ...payload.player }));
         return;
       }

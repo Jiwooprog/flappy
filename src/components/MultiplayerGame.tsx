@@ -98,6 +98,20 @@ export const MultiplayerGame: React.FC<MultiplayerGameProps> = ({
   const scoreRef = useRef(0);
   const rngRef = useRef<(() => number) | null>(null);
 
+  // Keep opponent state in a ref so requestAnimationFrame loop always reads live state without closure staleness
+  const opponentStateRef = useRef<MPPlayerState | null>(opponentState);
+  opponentStateRef.current = opponentState;
+
+  // Smooth client-side interpolated ghost bird state
+  const opponentGhostRef = useRef({
+    x: 0,
+    y: 270,
+    vy: 0,
+    rotation: 0,
+    wingTimer: 0,
+    wingFrame: 0,
+  });
+
   const [score, setScore] = useState(0);
   const [isAlive, setIsAlive] = useState(true);
   const [gameResult, setGameResult] = useState<'WIN' | 'LOSE' | null>(null);
@@ -132,8 +146,10 @@ export const MultiplayerGame: React.FC<MultiplayerGameProps> = ({
     birdRef.current = flapBird(birdRef.current, config.jumpForce);
     particlesRef.current.push(...createFlapParticles(birdRef.current, currentSkin.particleColor));
     sound.playFlap();
+    // Sync jump impulse immediately across network
+    onStateChange({ y: birdRef.current.y, vy: birdRef.current.vy });
     onFlap();
-  }, [config.jumpForce, currentSkin.particleColor, onFlap, phase]);
+  }, [config.jumpForce, currentSkin.particleColor, onFlap, onStateChange, phase]);
 
   // -----------------------------------------------------------------------
   // Keyboard & click (canvas area)
@@ -265,21 +281,51 @@ export const MultiplayerGame: React.FC<MultiplayerGameProps> = ({
       // Render local player bird
       renderer.renderBird(birdRef.current, skin);
 
-      // Render opponent ghost bird
-      if (opponentState && opponentState.alive) {
+      // Render opponent ghost bird in real-time right alongside your bird
+      const opp = opponentStateRef.current;
+      if (opp && opp.alive) {
+        const ghost = opponentGhostRef.current;
+        // Offset slightly (-14px) so both birds are clearly visible side-by-side
+        ghost.x = birdRef.current.x - 14;
+
+        // Smoothly interpolate towards opponent target Y
+        const targetY = opp.y;
+        ghost.vy = opp.vy;
+        ghost.y += (targetY - ghost.y) * 0.35;
+
+        ghost.wingTimer += dt * 10;
+        ghost.wingFrame = Math.floor(ghost.wingTimer) % 4;
+        ghost.rotation = Math.min(Math.PI / 2, Math.max(-Math.PI / 4, ghost.vy * 0.04));
+
         ctx.save();
-        ctx.globalAlpha = 0.55;
+        ctx.globalAlpha = 0.72; // Clearly visible ghost opacity
+
         const opponentBird: Bird = {
-          x: birdRef.current.x,
-          y: opponentState.y,
-          vy: opponentState.vy,
+          x: ghost.x,
+          y: ghost.y,
+          vy: ghost.vy,
           radius: birdRef.current.radius,
-          rotation: Math.min(Math.PI / 2, Math.max(-Math.PI / 4, opponentState.vy * 0.04)),
-          wingFrame: birdRef.current.wingFrame,
-          wingTimer: 0,
+          rotation: ghost.rotation,
+          wingFrame: ghost.wingFrame,
+          wingTimer: ghost.wingTimer,
         };
-        const oppSkinKey = (opponentState.skin as BirdSkin) in SKINS ? (opponentState.skin as BirdSkin) : 'classic';
+        const oppSkinKey = (opp.skin as BirdSkin) in SKINS ? (opp.skin as BirdSkin) : 'classic';
         renderer.renderBird(opponentBird, oppSkinKey);
+
+        // Name badge above opponent's ghost bird
+        ctx.font = '600 9px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillStyle = 'rgba(15, 23, 42, 0.75)';
+        ctx.beginPath();
+        if (ctx.roundRect) {
+          ctx.roundRect(ghost.x - 26, ghost.y - 24, 52, 13, 3);
+        } else {
+          ctx.rect(ghost.x - 26, ghost.y - 24, 52, 13);
+        }
+        ctx.fill();
+        ctx.fillStyle = '#38bdf8';
+        ctx.fillText(opp.username || 'Opponent', ghost.x, ghost.y - 14);
+
         ctx.restore();
       }
 
