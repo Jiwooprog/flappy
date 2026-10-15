@@ -102,14 +102,20 @@ export const MultiplayerGame: React.FC<MultiplayerGameProps> = ({
   const opponentStateRef = useRef<MPPlayerState | null>(opponentState);
   opponentStateRef.current = opponentState;
 
+  // Game result ref to avoid simultaneous-death race conditions
+  const gameResultRef = useRef<'WIN' | 'LOSE' | null>(null);
+
   // Smooth client-side interpolated ghost bird state
   const opponentGhostRef = useRef({
     x: 0,
     y: 270,
     vy: 0,
+    prevVy: 0,
     rotation: 0,
     wingTimer: 0,
     wingFrame: 0,
+    crashed: false,
+    alpha: 0.75,
   });
 
   const [score, setScore] = useState(0);
@@ -124,19 +130,27 @@ export const MultiplayerGame: React.FC<MultiplayerGameProps> = ({
     const seed = roundSeed || roomCodeToSeed(roomCode);
     rngRef.current = seededRng(seed);
     setGameResult(null);
+    gameResultRef.current = null;
     setIsAlive(true);
     setScore(0);
     aliveRef.current = true;
     scoreRef.current = 0;
+    opponentGhostRef.current.crashed = false;
+    opponentGhostRef.current.alpha = 0.75;
   }, [roomCode, roundSeed]);
 
   // Check if opponent died → we win (if we're still alive)
   useEffect(() => {
-    if (opponentState && !opponentState.alive && aliveRef.current && phase === 'PLAYING' && !gameResult) {
-      setGameResult('WIN');
+    if (opponentState && !opponentState.alive && aliveRef.current && phase === 'PLAYING' && !gameResultRef.current) {
+      gameResultRef.current = 'WIN';
       onRecordRoundWin('me');
+      // 900ms delay so the player can witness the opponent crash into the obstacle
+      const timer = setTimeout(() => {
+        setGameResult('WIN');
+      }, 900);
+      return () => clearTimeout(timer);
     }
-  }, [opponentState, phase, gameResult, onRecordRoundWin]);
+  }, [opponentState, phase, onRecordRoundWin]);
 
   // -----------------------------------------------------------------------
   // Flap handler
@@ -168,10 +182,10 @@ export const MultiplayerGame: React.FC<MultiplayerGameProps> = ({
   }, [handleFlap]);
 
   // -----------------------------------------------------------------------
-  // Game loop
+  // Game & Countdown loop
   // -----------------------------------------------------------------------
   useEffect(() => {
-    if (phase !== 'PLAYING') return;
+    if (phase !== 'PLAYING' && phase !== 'COUNTDOWN') return;
 
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -181,7 +195,9 @@ export const MultiplayerGame: React.FC<MultiplayerGameProps> = ({
 
     // Reset state for fresh round
     birdRef.current = createInitialBird();
-    birdRef.current = flapBird(birdRef.current, config.jumpForce); // initial flap
+    if (phase === 'PLAYING') {
+      birdRef.current = flapBird(birdRef.current, config.jumpForce); // initial flap
+    }
     pipesRef.current = [];
     particlesRef.current = [];
     scrollOffsetRef.current = 0;
@@ -191,6 +207,9 @@ export const MultiplayerGame: React.FC<MultiplayerGameProps> = ({
     setScore(0);
     setIsAlive(true);
     setGameResult(null);
+    gameResultRef.current = null;
+    opponentGhostRef.current.crashed = false;
+    opponentGhostRef.current.alpha = 0.75;
     rngRef.current = seededRng(roundSeed || roomCodeToSeed(roomCode));
 
     const loop = (timestamp: number) => {
@@ -198,6 +217,80 @@ export const MultiplayerGame: React.FC<MultiplayerGameProps> = ({
       const dt = Math.min((timestamp - lastTimeRef.current) / 1000, 0.05);
       lastTimeRef.current = timestamp;
 
+      if (phase === 'COUNTDOWN') {
+        // Countdown idle animation: gentle hovering birds at starting grid
+        const hoverOffset = Math.sin(timestamp * 0.005) * 6;
+        birdRef.current.y = 270 + hoverOffset;
+        birdRef.current.vy = 0;
+        birdRef.current.rotation = 0;
+        birdRef.current.wingTimer += dt * 8;
+        birdRef.current.wingFrame = Math.floor(birdRef.current.wingTimer) % 4;
+
+        renderer.clear();
+        renderer.renderBackground('day', 0);
+        renderer.renderGround('day', 0);
+
+        // Local bird on start grid
+        renderer.renderBird(birdRef.current, skin);
+
+        // Local bird badge
+        ctx.save();
+        ctx.font = '700 9px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillStyle = 'rgba(15, 23, 42, 0.75)';
+        if (ctx.roundRect) {
+          ctx.roundRect(birdRef.current.x - 18, birdRef.current.y - 24, 36, 13, 3);
+        } else {
+          ctx.rect(birdRef.current.x - 18, birdRef.current.y - 24, 36, 13);
+        }
+        ctx.fill();
+        ctx.fillStyle = '#facc15';
+        ctx.fillText('YOU', birdRef.current.x, birdRef.current.y - 14);
+        ctx.restore();
+
+        // Opponent bird on start grid
+        const opp = opponentStateRef.current;
+        if (opp) {
+          const ghost = opponentGhostRef.current;
+          ghost.x = birdRef.current.x - 14;
+          ghost.y = 270 + Math.sin(timestamp * 0.005 + 0.7) * 6;
+          ghost.rotation = 0;
+          ghost.wingTimer += dt * 8;
+          ghost.wingFrame = Math.floor(ghost.wingTimer) % 4;
+
+          ctx.save();
+          ctx.globalAlpha = 0.75;
+          const opponentBird: Bird = {
+            x: ghost.x,
+            y: ghost.y,
+            vy: 0,
+            radius: birdRef.current.radius,
+            rotation: 0,
+            wingFrame: ghost.wingFrame,
+            wingTimer: ghost.wingTimer,
+          };
+          const oppSkinKey = (opp.skin as BirdSkin) in SKINS ? (opp.skin as BirdSkin) : 'classic';
+          renderer.renderBird(opponentBird, oppSkinKey);
+
+          ctx.font = '600 9px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.fillStyle = 'rgba(15, 23, 42, 0.75)';
+          if (ctx.roundRect) {
+            ctx.roundRect(ghost.x - 26, ghost.y - 24, 52, 13, 3);
+          } else {
+            ctx.rect(ghost.x - 26, ghost.y - 24, 52, 13);
+          }
+          ctx.fill();
+          ctx.fillStyle = '#38bdf8';
+          ctx.fillText(opp.username || 'Opponent', ghost.x, ghost.y - 14);
+          ctx.restore();
+        }
+
+        rafIdRef.current = requestAnimationFrame(loop);
+        return;
+      }
+
+      // --- PHASE: PLAYING ---
       if (aliveRef.current) {
         // Scroll
         scrollOffsetRef.current += config.pipeSpeed * dt;
@@ -233,18 +326,25 @@ export const MultiplayerGame: React.FC<MultiplayerGameProps> = ({
           pipes.push(createSeededPipe(rngRef.current!, CANVAS_WIDTH + 10, config.pipeGap, lastPipeIdRef.current));
         }
 
-        // Collision
+        // Collision check
         if (checkCollision(birdRef.current, pipes)) {
           aliveRef.current = false;
           setIsAlive(false);
-          setGameResult('LOSE');
-          onRecordRoundWin('opponent');
           flashAlphaRef.current = 0.85;
           shakeTimerRef.current = 0.28;
           sound.playHit();
           setTimeout(() => sound.playFall(), 120);
           particlesRef.current.push(...createImpactParticles(birdRef.current, currentSkin.bodyColor));
           onStateChange({ alive: false, finished: true });
+
+          // Only record a loss if opponent hasn't already died before us
+          if (!gameResultRef.current) {
+            gameResultRef.current = 'LOSE';
+            onRecordRoundWin('opponent');
+            setTimeout(() => {
+              setGameResult('LOSE');
+            }, 700);
+          }
         }
 
         // Sync Y position periodically
@@ -281,52 +381,102 @@ export const MultiplayerGame: React.FC<MultiplayerGameProps> = ({
       // Render local player bird
       renderer.renderBird(birdRef.current, skin);
 
-      // Render opponent ghost bird in real-time right alongside your bird
+      // Local bird identifier tag
+      ctx.save();
+      ctx.font = '700 9px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.75)';
+      if (ctx.roundRect) {
+        ctx.roundRect(birdRef.current.x - 18, birdRef.current.y - 24, 36, 13, 3);
+      } else {
+        ctx.rect(birdRef.current.x - 18, birdRef.current.y - 24, 36, 13);
+      }
+      ctx.fill();
+      ctx.fillStyle = '#facc15';
+      ctx.fillText('YOU', birdRef.current.x, birdRef.current.y - 14);
+      ctx.restore();
+
+      // Render opponent ghost bird in real-time alongside obstacles
       const opp = opponentStateRef.current;
-      if (opp && opp.alive) {
+      if (opp) {
         const ghost = opponentGhostRef.current;
-        // Offset slightly (-14px) so both birds are clearly visible side-by-side
         ghost.x = birdRef.current.x - 14;
 
-        // Smoothly interpolate towards opponent target Y
-        const targetY = opp.y;
-        ghost.vy = opp.vy;
-        ghost.y += (targetY - ghost.y) * 0.35;
+        if (opp.alive) {
+          // Detect jump impulse to spawn flap particles behind opponent
+          if (opp.vy <= -180 && ghost.prevVy > -180) {
+            const oppSkinConfig = SKINS[(opp.skin as BirdSkin) in SKINS ? (opp.skin as BirdSkin) : 'classic'];
+            particlesRef.current.push(...createFlapParticles({
+              x: ghost.x,
+              y: ghost.y,
+              vy: ghost.vy,
+              radius: birdRef.current.radius,
+              rotation: ghost.rotation,
+              wingFrame: ghost.wingFrame,
+              wingTimer: ghost.wingTimer,
+            }, oppSkinConfig.particleColor));
+          }
+          ghost.prevVy = opp.vy;
 
-        ghost.wingTimer += dt * 10;
-        ghost.wingFrame = Math.floor(ghost.wingTimer) % 4;
-        ghost.rotation = Math.min(Math.PI / 2, Math.max(-Math.PI / 4, ghost.vy * 0.04));
-
-        ctx.save();
-        ctx.globalAlpha = 0.72; // Clearly visible ghost opacity
-
-        const opponentBird: Bird = {
-          x: ghost.x,
-          y: ghost.y,
-          vy: ghost.vy,
-          radius: birdRef.current.radius,
-          rotation: ghost.rotation,
-          wingFrame: ghost.wingFrame,
-          wingTimer: ghost.wingTimer,
-        };
-        const oppSkinKey = (opp.skin as BirdSkin) in SKINS ? (opp.skin as BirdSkin) : 'classic';
-        renderer.renderBird(opponentBird, oppSkinKey);
-
-        // Name badge above opponent's ghost bird
-        ctx.font = '600 9px sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillStyle = 'rgba(15, 23, 42, 0.75)';
-        ctx.beginPath();
-        if (ctx.roundRect) {
-          ctx.roundRect(ghost.x - 26, ghost.y - 24, 52, 13, 3);
+          // Smoothly interpolate towards opponent target Y
+          ghost.vy = opp.vy;
+          ghost.y += (opp.y - ghost.y) * 0.35;
+          ghost.wingTimer += dt * 10;
+          ghost.wingFrame = Math.floor(ghost.wingTimer) % 4;
+          ghost.rotation = Math.min(Math.PI / 2, Math.max(-Math.PI / 4, ghost.vy * 0.04));
         } else {
-          ctx.rect(ghost.x - 26, ghost.y - 24, 52, 13);
+          // Opponent crashed: trigger impact particles once, then tumble down
+          if (!ghost.crashed) {
+            ghost.crashed = true;
+            particlesRef.current.push(...createImpactParticles({
+              x: ghost.x,
+              y: ghost.y,
+              vy: ghost.vy,
+              radius: birdRef.current.radius,
+              rotation: ghost.rotation,
+              wingFrame: 0,
+              wingTimer: 0,
+            }, '#38bdf8'));
+          }
+          if (ghost.y < CANVAS_HEIGHT - 90) {
+            ghost.vy += config.gravity * dt;
+            ghost.y += ghost.vy * dt;
+            ghost.rotation = Math.min(Math.PI / 2, ghost.rotation + dt * 6);
+            ghost.alpha = Math.max(0, ghost.alpha - dt * 0.6);
+          }
         }
-        ctx.fill();
-        ctx.fillStyle = '#38bdf8';
-        ctx.fillText(opp.username || 'Opponent', ghost.x, ghost.y - 14);
 
-        ctx.restore();
+        if (ghost.alpha > 0.05) {
+          ctx.save();
+          ctx.globalAlpha = ghost.alpha;
+
+          const opponentBird: Bird = {
+            x: ghost.x,
+            y: ghost.y,
+            vy: ghost.vy,
+            radius: birdRef.current.radius,
+            rotation: ghost.rotation,
+            wingFrame: ghost.wingFrame,
+            wingTimer: ghost.wingTimer,
+          };
+          const oppSkinKey = (opp.skin as BirdSkin) in SKINS ? (opp.skin as BirdSkin) : 'classic';
+          renderer.renderBird(opponentBird, oppSkinKey);
+
+          // Name badge above opponent's ghost bird
+          ctx.font = '600 9px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.fillStyle = ghost.crashed ? 'rgba(239, 68, 68, 0.85)' : 'rgba(15, 23, 42, 0.75)';
+          if (ctx.roundRect) {
+            ctx.roundRect(ghost.x - 26, ghost.y - 24, 52, 13, 3);
+          } else {
+            ctx.rect(ghost.x - 26, ghost.y - 24, 52, 13);
+          }
+          ctx.fill();
+          ctx.fillStyle = ghost.crashed ? '#ffffff' : '#38bdf8';
+          ctx.fillText(ghost.crashed ? 'CRASHED' : (opp.username || 'Opponent'), ghost.x, ghost.y - 14);
+
+          ctx.restore();
+        }
       }
 
       renderer.renderFlash(flashAlphaRef.current);
