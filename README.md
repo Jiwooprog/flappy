@@ -206,11 +206,17 @@ cp .env.example .env.local
 |---|---|---|---|
 | `UPSTASH_REDIS_REST_URL` | Optional | REST URL for Upstash Redis database | Uses local `leaderboard.json` in dev or `localStorage` |
 | `UPSTASH_REDIS_REST_TOKEN` | Optional | REST Token for Upstash Redis database | Uses local `leaderboard.json` in dev or `localStorage` |
-| `VITE_SUPABASE_URL` | Optional | Supabase project URL for 1v1 multiplayer | Pre-configured with built-in default project |
-| `VITE_SUPABASE_ANON_KEY` | Optional | Supabase anonymous public key | Pre-configured with built-in default project |
+| `VITE_SUPABASE_URL` | Required for multiplayer | Supabase project URL for 1v1 multiplayer | Multiplayer is disabled until configured |
+| `VITE_SUPABASE_ANON_KEY` | Required for multiplayer | Supabase publishable client key | Multiplayer is disabled until configured |
 
 > [!NOTE]
-> Even without custom environment variables, the game runs out of the box with offline local storage for single-player high scores and built-in Supabase credentials for multiplayer!
+> The game runs offline for single-player without environment variables. Configure Supabase only after enabling Realtime authorization policies appropriate for public multiplayer; publishable client keys are expected to be visible in browser bundles.
+
+### Security notes
+
+- Redis credentials belong only in Vercel environment variables or an ignored `.env.local`; never commit them.
+- The leaderboard API is rate-limited and validates request sizes and fields, but browser-submitted scores are not cryptographically verifiable. Do not use it for prizes or rankings with real-world value without server-authoritative score verification.
+- Configure Supabase Realtime authorization policies before enabling multiplayer. Room codes are an invitation convenience, not an authentication boundary.
 
 ---
 
@@ -236,8 +242,8 @@ The repository is pre-configured with [vercel.json](file:///c:/flappy/vercel.jso
    - Add the following variables:
      - `UPSTASH_REDIS_REST_URL` = your Upstash REST URL
      - `UPSTASH_REDIS_REST_TOKEN` = your Upstash REST token
-     - `VITE_SUPABASE_URL` = your Supabase URL (optional if using default)
-     - `VITE_SUPABASE_ANON_KEY` = your Supabase Anon Key (optional if using default)
+     - `VITE_SUPABASE_URL` = your Supabase URL
+     - `VITE_SUPABASE_ANON_KEY` = your Supabase publishable client key
 
 4. **Click Deploy**:
    Vercel will compile the Vite frontend and host `/api/leaderboard` as a serverless edge endpoint.
@@ -247,4 +253,3 @@ The repository is pre-configured with [vercel.json](file:///c:/flappy/vercel.jso
 ## 📄 License
 
 This project is open source and available under the [MIT License](LICENSE).
-

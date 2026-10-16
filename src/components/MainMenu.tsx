@@ -23,6 +23,7 @@ interface MainMenuProps {
   onOpenSettings: () => void;
   onOpenLeaderboard: () => void;
   onOpenMultiplayer: () => void;
+  multiplayerEnabled: boolean;
   bestScore: number;
   isMuted: boolean;
   onToggleMute: () => void;
@@ -40,6 +41,7 @@ export const MainMenu: React.FC<MainMenuProps> = ({
   onOpenSettings,
   onOpenLeaderboard,
   onOpenMultiplayer,
+  multiplayerEnabled,
   bestScore,
   isMuted,
   onToggleMute,
@@ -201,17 +203,19 @@ export const MainMenu: React.FC<MainMenuProps> = ({
             <span>RECORDS</span>
           </button>
 
-          <button
-            type="button"
-            className="menu-sub-btn mp-menu-btn"
-            onClick={(e) => {
-              e.stopPropagation();
-              onOpenMultiplayer();
-            }}
-          >
-            <Wifi size={17} className="text-emerald-400 mb-1" />
-            <span>VERSUS</span>
-          </button>
+          {multiplayerEnabled && (
+            <button
+              type="button"
+              className="menu-sub-btn mp-menu-btn"
+              onClick={(e) => {
+                e.stopPropagation();
+                onOpenMultiplayer();
+              }}
+            >
+              <Wifi size={17} className="text-emerald-400 mb-1" />
+              <span>VERSUS</span>
+            </button>
+          )}
 
           <button
             type="button"

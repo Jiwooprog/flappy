@@ -13,26 +13,56 @@ interface LeaderboardEntry {
 const redisUrl = process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL;
 const redisToken = process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN;
 const redis = redisUrl && redisToken ? new Redis({ url: redisUrl, token: redisToken }) : null;
+const MAX_BODY_BYTES = 4 * 1024;
+const MAX_SCORE = 10_000;
+const RATE_LIMIT_PER_MINUTE = 30;
+const VALID_DIFFICULTIES = new Set<LeaderboardEntry['difficulty']>(['casual', 'classic', 'hardcore']);
+const VALID_SKINS = new Set([
+  'classic', 'cyber', 'phoenix', 'midnight', 'gino', 'jewel', 'rj', 'junjun', 'bongbong',
+]);
 
 async function readBody(req: IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
     let body = '';
-    req.on('data', (chunk) => { body += chunk; });
-    req.on('end', () => resolve(body));
+    let size = 0;
+    let tooLarge = false;
+    req.on('data', (chunk: Buffer) => {
+      size += chunk.length;
+      if (size > MAX_BODY_BYTES) {
+        tooLarge = true;
+        return;
+      }
+      body += chunk;
+    });
+    req.on('end', () => {
+      if (tooLarge) reject(new Error('Request body too large'));
+      else resolve(body);
+    });
     req.on('error', (err) => reject(err));
   });
+}
+
+function getClientIp(req: IncomingMessage): string {
+  const forwarded = req.headers['x-forwarded-for'];
+  const value = Array.isArray(forwarded) ? forwarded[0] : forwarded;
+  return value?.split(',')[0]?.trim() || req.socket.remoteAddress || 'unknown';
+}
+
+async function isRateLimited(ip: string): Promise<boolean> {
+  if (!redis) return false;
+  const window = Math.floor(Date.now() / 60_000);
+  const key = `flappy:rate-limit:${ip}:${window}`;
+  const count = await redis.incr(key);
+  if (count === 1) await redis.expire(key, 60);
+  return count > RATE_LIMIT_PER_MINUTE;
 }
 
 export default async function handler(
   req: IncomingMessage & { url?: string },
   res: ServerResponse
 ) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-
   if (req.method === 'OPTIONS') {
-    res.statusCode = 200;
+    res.statusCode = 204;
     res.end();
     return;
   }
@@ -96,24 +126,32 @@ export default async function handler(
   // ── POST ─────────────────────────────────────────────────────────────────
   if (req.method === 'POST') {
     try {
+      if (await isRateLimited(getClientIp(req))) {
+        res.statusCode = 429;
+        res.setHeader('Retry-After', '60');
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify({ error: 'Too many score submissions' }));
+        return;
+      }
+
       const rawBody = await readBody(req);
       const data = JSON.parse(rawBody || '{}') as Record<string, unknown>;
 
-      const username = ((data.username as string) || 'PLAYER').trim().substring(0, 16) || 'PLAYER';
+      const rawUsername = typeof data.username === 'string' ? data.username : 'PLAYER';
+      const username = rawUsername.trim().substring(0, 16) || 'PLAYER';
       const uKey = username.toLowerCase();
-      const score = Math.max(0, parseInt(String(data.score), 10) || 0);
-      const diffRaw = data.difficulty as string;
-      const diff: LeaderboardEntry['difficulty'] = (
-        ['casual', 'classic', 'hardcore'] as string[]
-      ).includes(diffRaw)
+      const submittedScore = Number(data.score);
+      const score = Number.isSafeInteger(submittedScore) ? submittedScore : 0;
+      const diffRaw = typeof data.difficulty === 'string' ? data.difficulty : '';
+      const diff: LeaderboardEntry['difficulty'] = VALID_DIFFICULTIES.has(diffRaw as LeaderboardEntry['difficulty'])
         ? (diffRaw as LeaderboardEntry['difficulty'])
         : 'classic';
-      const skin = (data.skin as string) || 'classic';
+      const skin = typeof data.skin === 'string' && VALID_SKINS.has(data.skin) ? data.skin : 'classic';
 
-      if (score <= 0) {
+      if (score <= 0 || score > MAX_SCORE) {
         res.statusCode = 400;
         res.setHeader('Content-Type', 'application/json');
-        res.end(JSON.stringify({ error: 'Score must be greater than 0' }));
+        res.end(JSON.stringify({ error: `Score must be an integer between 1 and ${MAX_SCORE}` }));
         return;
       }
 
@@ -175,9 +213,10 @@ export default async function handler(
       res.end(JSON.stringify({ success: true, rank, entry: finalEntry }));
     } catch (err) {
       console.error('Upstash POST error:', err);
-      res.statusCode = 400;
+      const bodyTooLarge = err instanceof Error && err.message === 'Request body too large';
+      res.statusCode = bodyTooLarge ? 413 : 400;
       res.setHeader('Content-Type', 'application/json');
-      res.end(JSON.stringify({ error: 'Invalid score submission payload' }));
+      res.end(JSON.stringify({ error: bodyTooLarge ? 'Request body too large' : 'Invalid score submission payload' }));
     }
     return;
   }

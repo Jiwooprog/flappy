@@ -33,6 +33,7 @@ import { UsernameSetupModal } from './UsernameSetupModal';
 import { MultiplayerLobby } from './MultiplayerLobby';
 import { MultiplayerGame } from './MultiplayerGame';
 import { useMultiplayer } from '../hooks/useMultiplayer';
+import { isMultiplayerConfigured } from '../game/supabase';
 import { getStoredUsername, hasSetUsername, submitLeaderboardScore } from '../game/leaderboard';
 
 export const FlappyBird: React.FC = () => {
@@ -524,6 +525,7 @@ export const FlappyBird: React.FC = () => {
                 onOpenSettings={() => setIsSettingsOpen(true)}
                 onOpenLeaderboard={() => setIsLeaderboardOpen(true)}
                 onOpenMultiplayer={() => setShowMPLobby(true)}
+                multiplayerEnabled={isMultiplayerConfigured}
                 bestScore={bestScore}
                 isMuted={isMuted}
                 onToggleMute={handleToggleMute}
